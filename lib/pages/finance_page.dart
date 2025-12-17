@@ -50,7 +50,7 @@ class _FinancePageState extends State<FinancePage> {
             // === Dashboard Header ===
             Card(
               elevation: 4,
-              color: Colors.blueGrey[900],
+              color: Theme.of(context).colorScheme.surfaceVariant,
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -78,23 +78,23 @@ class _FinancePageState extends State<FinancePage> {
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.orange[100],
+                        color: Theme.of(context).colorScheme.tertiaryContainer,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.info,
                             size: 18,
-                            color: Colors.orange,
+                            color: Theme.of(context).colorScheme.onTertiaryContainer,
                           ),
                           const SizedBox(width: 8),
                           Text(
                             'Total: ${controller.players.length} jogadores',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.orange,
+                              color: Theme.of(context).colorScheme.onTertiaryContainer,
                             ),
                           ),
                         ],

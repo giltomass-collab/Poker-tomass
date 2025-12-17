@@ -71,26 +71,38 @@ class TournamentController extends ChangeNotifier {
   }
 
   void _loadDefaultLevels() {
-    levels = List.generate(12, (i) {
+    levels.clear();
+    // Níveis 1-8 (com Rebuy)
+    for (int i = 0; i < 8; i++) {
       final lvl = i + 1;
-      if (lvl <= 8) {
-        return BlindLevel(
-          level: lvl,
-          label: 'N$lvl',
-          smallBlind: 50 * lvl,
-          bigBlind: 100 * lvl,
-          durationSeconds: 15 * 60,
-        );
-      } else {
-        return BlindLevel(
-          level: lvl,
-          label: 'N$lvl',
-          smallBlind: 100 * lvl,
-          bigBlind: 200 * lvl,
-          durationSeconds: 10 * 60,
-        );
-      }
-    });
+      levels.add(BlindLevel(
+        level: lvl,
+        label: 'N$lvl',
+        smallBlind: 50 * lvl,
+        bigBlind: 100 * lvl,
+        durationSeconds: 15 * 60,
+      ));
+    }
+    // Nível de Intervalo (para Add-on)
+    levels.add(BlindLevel(
+      level: 9,
+      label: 'INTERVALO',
+      smallBlind: 0,
+      bigBlind: 0,
+      durationSeconds: 5 * 60, // 5 minutos de intervalo
+      isBreak: true,
+    ));
+    // Níveis 9-12 (sem Rebuy/Add-on)
+    for (int i = 9; i < 13; i++) {
+      final lvl = i + 1;
+      levels.add(BlindLevel(
+        level: lvl,
+        label: 'N$lvl',
+        smallBlind: 100 * (i),
+        bigBlind: 200 * (i),
+        durationSeconds: 10 * 60,
+      ));
+    }
   }
 
   void _setLevel(int index) {
@@ -146,6 +158,13 @@ class TournamentController extends ChangeNotifier {
   }
 
   BlindLevel get currentLevel => levels[_currentLevelIndex];
+
+  // Regras do Torneio
+  bool get isRebuyAllowed =>
+      _currentLevelIndex < 8; // Níveis 1-8 (índices 0-7)
+
+  bool get isAddonAllowed =>
+      currentLevel.isBreak; // Apenas durante o intervalo
 
   // Player management
   void addPlayer(Player p) {

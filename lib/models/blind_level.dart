@@ -5,6 +5,7 @@ class BlindLevel {
   int bigBlind;
   int? ante;
   int durationSeconds;
+  bool isBreak;
 
   BlindLevel({
     required this.level,
@@ -13,6 +14,7 @@ class BlindLevel {
     required this.bigBlind,
     this.ante,
     required this.durationSeconds,
+    this.isBreak = false,
   });
 
   @override

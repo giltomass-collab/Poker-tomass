@@ -22,7 +22,11 @@ class TomassPokerApp extends StatelessWidget {
       create: (_) => TournamentController(),
       child: MaterialApp(
         title: 'TomasPoker',
-        theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.green),
+        theme: ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          colorSchemeSeed: Colors.blueGrey,
+        ),
         home: const MainShell(),
       ),
     );
