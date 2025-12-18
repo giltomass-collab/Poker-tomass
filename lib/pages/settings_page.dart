@@ -10,80 +10,136 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = Provider.of<TournamentController>(context);
-    return ListView(
-      padding: const EdgeInsets.all(12),
+    return Column(
       children: [
-        const ListTile(title: Text('Configurações gerais'), dense: true),
-        SwitchListTile(
-          value: true,
-          onChanged: (_) {},
-          title: const Text('Português (pt-BR)'),
-        ),
-        const Divider(),
-        const ListTile(title: Text('Níveis de Blind'), dense: true),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: controller.levels.length,
-          itemBuilder: (context, i) {
-            final level = controller.levels[i];
-            return _LevelEditTile(level: level, controller: controller);
-          },
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            ElevatedButton(
-              onPressed: () => controller.resetBlindLevels(),
-              child: const Text('Restaurar Padrão'),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: () => _showSavePresetDialog(context, controller),
-              child: const Text('Salvar Preset'),
-            ),
+        TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(icon: Icon(Icons.attach_money), text: 'Valores'),
+            Tab(icon: Icon(Icons.hourglass_bottom), text: 'Níveis'),
           ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [const _ValuesSettingsTab(), _buildLevelsTab(context)],
+          ),
         ),
       ],
     );
   }
+}
 
-  void _showSavePresetDialog(
-    BuildContext context,
-    TournamentController controller,
-  ) {
-    final nameCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('Salvar Preset'),
-          content: TextField(
-            controller: nameCtrl,
-            decoration: const InputDecoration(labelText: 'Nome do preset'),
+class _ValuesSettingsTab extends StatefulWidget {
+  const _ValuesSettingsTab();
+
+  @override
+  State<_ValuesSettingsTab> createState() => _ValuesSettingsTabState();
+}
+
+class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
+  late TextEditingController _buyinCtrl;
+  late TextEditingController _rebuyCtrl;
+  late TextEditingController _addonCtrl;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = Provider.of<TournamentController>(
+      context,
+      listen: false,
+    );
+    _buyinCtrl = TextEditingController(text: controller.buyInAmount.toString());
+    _rebuyCtrl = TextEditingController(text: controller.rebuyAmount.toString());
+    _addonCtrl = TextEditingController(text: controller.addonAmount.toString());
+  }
+
+  @override
+  void dispose() {
+    _buyinCtrl.dispose();
+    _rebuyCtrl.dispose();
+    _addonCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = Provider.of<TournamentController>(
+      context,
+      listen: false,
+    );
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const ListTile(
+          leading: Icon(Icons.attach_money),
+          title: Text('Valores do Torneio'),
+          subtitle: Text('Defina os custos para as ações do torneio.'),
+        ),
+        const Divider(),
+        TextField(
+          controller: _buyinCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Valor do Buy-in',
+            prefixText: 'R\$ ',
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                // Save preset logic (could persist to storage)
-                Navigator.of(ctx).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Preset "${nameCtrl.text}" salvo!')),
-                );
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
-        );
-      },
+          onChanged: (value) {
+            final amount = int.tryParse(value);
+            if (amount != null) {
+              controller.updateBuyInAmount(amount);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _rebuyCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Valor do Rebuy',
+            prefixText: 'R\$ ',
+          ),
+          onChanged: (value) {
+            final amount = int.tryParse(value);
+            if (amount != null) {
+              controller.updateRebuyAmount(amount);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _addonCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Valor do Add-on',
+            prefixText: 'R\$ ',
+          ),
+          onChanged: (value) {
+            final amount = int.tryParse(value);
+            if (amount != null) {
+              controller.updateAddonAmount(amount);
+            }
+          },
+        ),
+      ],
     );
   }
 }
@@ -132,10 +188,6 @@ class _LevelEditTileState extends State<_LevelEditTile> {
                 onChanged: (v) {
                   widget.level.smallBlind =
                       int.tryParse(v) ?? widget.level.smallBlind;
-                  Provider.of<TournamentController>(
-                    context,
-                    listen: false,
-                  ).notifyListeners();
                 },
               ),
               TextField(
@@ -145,10 +197,6 @@ class _LevelEditTileState extends State<_LevelEditTile> {
                 onChanged: (v) {
                   widget.level.bigBlind =
                       int.tryParse(v) ?? widget.level.bigBlind;
-                  Provider.of<TournamentController>(
-                    context,
-                    listen: false,
-                  ).notifyListeners();
                 },
               ),
               TextField(
@@ -161,10 +209,6 @@ class _LevelEditTileState extends State<_LevelEditTile> {
                   final mins =
                       int.tryParse(v) ?? (widget.level.durationSeconds ~/ 60);
                   widget.level.durationSeconds = mins * 60;
-                  Provider.of<TournamentController>(
-                    context,
-                    listen: false,
-                  ).notifyListeners();
                 },
               ),
             ],
@@ -180,5 +224,150 @@ class _LevelEditTileState extends State<_LevelEditTile> {
     bbCtrl.dispose();
     durationCtrl.dispose();
     super.dispose();
+  }
+}
+
+extension on _SettingsPageState {
+  Widget _buildLevelsTab(BuildContext context) {
+    final controller = Provider.of<TournamentController>(context);
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _buildPresetSection(context, controller),
+        const Divider(height: 24),
+        const ListTile(title: Text('Estrutura de Níveis (Atual)'), dense: true),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: controller.levels.length,
+          itemBuilder: (context, i) {
+            final level = controller.levels[i];
+            return _LevelEditTile(level: level, controller: controller);
+          },
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () => controller.resetBlindLevels(),
+              icon: const Icon(Icons.restore),
+              label: const Text('Padrão'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _showSavePresetDialog(context, controller),
+              icon: const Icon(Icons.save),
+              label: const Text('Salvar Preset'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPresetSection(
+    BuildContext context,
+    TournamentController controller,
+  ) {
+    return Column(
+      children: [
+        const ListTile(title: Text('Presets Salvos'), dense: true),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: controller.presets.length,
+          itemBuilder: (context, i) {
+            final preset = controller.presets[i];
+            return Card(
+              child: ListTile(
+                title: Text(preset.name),
+                subtitle: Text(
+                  '${preset.levels.length} níveis, Buy-in: ${preset.buyInAmount}',
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
+                      tooltip: 'Excluir Preset',
+                      onPressed: () {
+                        controller.deletePreset(preset.name);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Preset "${preset.name}" excluído.'),
+                          ),
+                        );
+                      },
+                    ),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.download),
+                      label: const Text('Carregar'),
+                      onPressed: () {
+                        controller.loadPreset(preset.name);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Preset "${preset.name}" carregado.'),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        if (controller.presets.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text(
+              'Nenhum preset salvo.',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+      ],
+    );
+  }
+
+  void _showSavePresetDialog(
+    BuildContext context,
+    TournamentController controller,
+  ) {
+    final nameCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Salvar Preset'),
+          content: TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(labelText: 'Nome do preset'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancelar'),
+            ),
+            TextButton(
+              onPressed: () {
+                controller.saveCurrentSettingsAsPreset(nameCtrl.text.trim());
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Preset "${nameCtrl.text}" salvo!')),
+                );
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }

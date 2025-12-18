@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
@@ -7,7 +8,9 @@ import '../models/blind_level.dart';
 import '../models/player.dart';
 import '../services/storage_service.dart';
 import '../models/player_transaction.dart';
+import '../models/player_move.dart';
 import '../models/payout.dart';
+import '../models/tournament_preset.dart';
 
 class TournamentController extends ChangeNotifier {
   List<Player> players = [];
@@ -18,11 +21,28 @@ class TournamentController extends ChangeNotifier {
   int _remainingSeconds = 0;
   bool isRunning = false;
 
-  TournamentController() {
+  // Configurações de valores do torneio
+  int buyInAmount = 1000;
+  int rebuyAmount = 1000;
+  int addonAmount = 2000;
+
+  // Presets
+  List<TournamentPreset> presets = [];
+
+  // Payouts
+  List<Payout> payouts = [];
+
+  // Table Balancing
+  List<PlayerMove> pendingPlayerMoves = [];
+  bool _storageAvailable = false;
+
+  TournamentController({bool initStorage = true}) {
     _loadDefaultLevels();
     _setLevel(0);
-    // initialize storage and load players
-    _initStorage();
+    // initialize storage and load players (skip in tests if requested)
+    if (initStorage) {
+      _initStorage();
+    }
   }
 
   Future<void> _initStorage() async {
@@ -36,6 +56,13 @@ class TournamentController extends ChangeNotifier {
           .whereType<Map>()
           .map((m) => PlayerTransaction.fromMap(m))
           .toList();
+      // Load tournament values
+      buyInAmount = StorageService.loadValue('buyInAmount', defaultValue: 1000);
+      rebuyAmount = StorageService.loadValue('rebuyAmount', defaultValue: 1000);
+      addonAmount = StorageService.loadValue('addonAmount', defaultValue: 2000);
+      // Load presets
+      presets = StorageService.loadPresets();
+      _storageAvailable = true;
       notifyListeners();
     } catch (e) {
       if (kDebugMode) print('Storage init failed: $e');
@@ -46,12 +73,22 @@ class TournamentController extends ChangeNotifier {
 
   void addTransaction(PlayerTransaction tx) {
     transactions.add(tx);
-    StorageService.saveTransaction(tx.id, tx.toMap());
+    if (_storageAvailable) StorageService.saveTransaction(tx.id, tx.toMap());
     notifyListeners();
   }
 
   List<PlayerTransaction> transactionsFor(String playerId) =>
       transactions.where((t) => t.playerId == playerId).toList();
+
+  List<PlayerTransaction> getTransactionsForPlayer(
+    String playerId, {
+    String? type,
+  }) {
+    var playerTransactions = transactions.where((t) => t.playerId == playerId);
+    if (type != null)
+      playerTransactions = playerTransactions.where((t) => t.type == type);
+    return playerTransactions.toList();
+  }
 
   int balanceFor(String playerId) {
     final ts = transactionsFor(playerId);
@@ -75,33 +112,39 @@ class TournamentController extends ChangeNotifier {
     // Níveis 1-8 (com Rebuy)
     for (int i = 0; i < 8; i++) {
       final lvl = i + 1;
-      levels.add(BlindLevel(
-        level: lvl,
-        label: 'N$lvl',
-        smallBlind: 50 * lvl,
-        bigBlind: 100 * lvl,
-        durationSeconds: 15 * 60,
-      ));
+      levels.add(
+        BlindLevel(
+          level: lvl,
+          label: 'N$lvl',
+          smallBlind: 50 * lvl,
+          bigBlind: 100 * lvl,
+          durationSeconds: 15 * 60,
+        ),
+      );
     }
     // Nível de Intervalo (para Add-on)
-    levels.add(BlindLevel(
-      level: 9,
-      label: 'INTERVALO',
-      smallBlind: 0,
-      bigBlind: 0,
-      durationSeconds: 5 * 60, // 5 minutos de intervalo
-      isBreak: true,
-    ));
+    levels.add(
+      BlindLevel(
+        level: 9,
+        label: 'INTERVALO',
+        smallBlind: 0,
+        bigBlind: 0,
+        durationSeconds: 15 * 60, // 15 minutos de intervalo
+        isBreak: true,
+      ),
+    );
     // Níveis 9-12 (sem Rebuy/Add-on)
-    for (int i = 9; i < 13; i++) {
-      final lvl = i + 1;
-      levels.add(BlindLevel(
-        level: lvl,
-        label: 'N$lvl',
-        smallBlind: 100 * (i),
-        bigBlind: 200 * (i),
-        durationSeconds: 10 * 60,
-      ));
+    for (int i = 8; i < 12; i++) {
+      final lvl = i + 1; // Starts at 9
+      levels.add(
+        BlindLevel(
+          level: lvl,
+          label: 'N$lvl',
+          smallBlind: 100 * (i + 1),
+          bigBlind: 200 * (i + 1),
+          durationSeconds: 10 * 60,
+        ),
+      );
     }
   }
 
@@ -160,39 +203,98 @@ class TournamentController extends ChangeNotifier {
   BlindLevel get currentLevel => levels[_currentLevelIndex];
 
   // Regras do Torneio
-  bool get isRebuyAllowed =>
-      _currentLevelIndex < 8; // Níveis 1-8 (índices 0-7)
+  bool get isRebuyAllowed => _currentLevelIndex < 8; // Níveis 1-8 (índices 0-7)
 
-  bool get isAddonAllowed =>
-      currentLevel.isBreak; // Apenas durante o intervalo
+  bool get isAddonAllowed => currentLevel.isBreak; // Apenas durante o intervalo
 
   // Player management
   void addPlayer(Player p) {
     players.add(p);
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
     notifyListeners();
   }
 
   void removePlayer(String id) {
     players.removeWhere((p) => p.id == id);
-    StorageService.deletePlayer(id);
+    if (_storageAvailable) StorageService.deletePlayer(id);
     notifyListeners();
   }
 
   void seatPlayer(String id, int seat) {
     final p = players.firstWhere((x) => x.id == id);
+
+    if (seat == 0) {
+      // Auto-seat: determine target table and pick seat within that table
+      final seatedPlayers = players.where((p) => p.seated).toList();
+      final playersOnTable1 = seatedPlayers
+          .where((p) => p.tableNumber == 1)
+          .length;
+      final currentNumTables = seatedPlayers
+          .map((p) => p.tableNumber)
+          .toSet()
+          .where((n) => n > 0)
+          .length;
+
+      int targetTable = 1;
+      // If table 1 is full, create/assign to next table
+      if (playersOnTable1 >= 9) {
+        targetTable = max(1, currentNumTables) + 1;
+      }
+
+      // Find available seats on target table
+      final occupiedSeatsOnTarget = seatedPlayers
+          .where((p) => p.tableNumber == targetTable)
+          .map((p) => p.seat)
+          .toSet();
+      final availableSeatsOnTarget = List.generate(
+        9,
+        (i) => i + 1,
+      ).where((s) => !occupiedSeatsOnTarget.contains(s)).toList();
+      if (availableSeatsOnTarget.isEmpty) {
+        // Fallback: try any available seat globally
+        final occupiedSeats = seatedPlayers.map((p) => p.seat).toSet();
+        final availableSeats = List.generate(
+          9,
+          (i) => i + 1,
+        ).where((s) => !occupiedSeats.contains(s)).toList();
+        if (availableSeats.isEmpty) return; // No seats available anywhere
+        availableSeats.shuffle();
+        p.seat = availableSeats.first;
+        p.tableNumber = 1;
+      } else {
+        availableSeatsOnTarget.shuffle();
+        p.seat = availableSeatsOnTarget.first;
+        p.tableNumber = targetTable;
+      }
+    } else {
+      p.seat = seat;
+      // default to table 1 when manually specifying a seat
+      if (p.tableNumber == 0) p.tableNumber = 1;
+    }
+
     p.seated = true;
-    p.seat = seat;
-    p.tableNumber = 1; // Default to table 1, balance will fix it
 
     // Auto buy-in on first seating
     if (p.buyins == 0) {
-      buyIn(id, 1000); // Default buy-in amount
+      buyIn(id, buyInAmount);
     }
 
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
+
+    // Check if tables need balancing after seating a player
     balanceTables();
     notifyListeners();
+  }
+
+  void togglePlayerParticipation(String playerId) {
+    final player = players.firstWhereOrNull((p) => p.id == playerId);
+    if (player == null) return;
+
+    if (player.seated) {
+      unseatPlayer(playerId);
+    } else {
+      seatPlayer(playerId, 0); // Auto-seat
+    }
   }
 
   void unseatPlayer(String id) {
@@ -200,8 +302,9 @@ class TournamentController extends ChangeNotifier {
     p.seated = false;
     p.seat = 0;
     p.tableNumber = 0;
-    StorageService.savePlayer(p);
-    notifyListeners();
+    if (_storageAvailable) StorageService.savePlayer(p);
+    // Rebalance tables after player leaves to consolidate remaining players
+    balanceTables();
   }
 
   // Reset blind levels to default
@@ -245,62 +348,141 @@ class TournamentController extends ChangeNotifier {
   }
 
   void balanceTables() {
+    pendingPlayerMoves.clear();
     final seatedPlayers = players.where((p) => p.seated).toList();
-    if (seatedPlayers.isEmpty) {
-      return;
-    }
+    if (seatedPlayers.isEmpty) return;
 
     final numPlayers = seatedPlayers.length;
-    final numTables = (numPlayers / 9).ceil();
+    final currentNumTables = seatedPlayers
+        .map((p) => p.tableNumber)
+        .toSet()
+        .where((n) => n > 0)
+        .length;
+    final requiredNumTables = (numPlayers / 9).ceil();
 
-    // Unseat all players logically to re-assign them
-    for (var p in seatedPlayers) {
-      p.seat = 0;
-      p.tableNumber = 0;
+    // If nothing to change, return
+    if (requiredNumTables == currentNumTables) {
+      // Still check for obvious overfull table
+      final overfull = seatedPlayers.any(
+        (p) =>
+            seatedPlayers.where((x) => x.tableNumber == p.tableNumber).length >
+            9,
+      );
+      if (!overfull) return;
     }
 
-    int currentPlayerIndex = 0;
-    while (currentPlayerIndex < numPlayers) {
-      for (int t = 1; t <= numTables; t++) {
-        if (currentPlayerIndex < numPlayers) {
-          // Find an empty seat at table 't'
-          final occupiedSeats = seatedPlayers
-              .where((p) => p.tableNumber == t)
-              .map((p) => p.seat)
-              .toSet();
-          int seat = 1;
-          while (occupiedSeats.contains(seat)) {
-            seat++;
-          }
+    // Compute expected sizes per table (balanced distribution)
+    final base = numPlayers ~/ requiredNumTables;
+    final remainder = numPlayers % requiredNumTables;
+    final expectedSizes = List<int>.generate(
+      requiredNumTables,
+      (i) => base + (i < remainder ? 1 : 0),
+    );
 
-          seatedPlayers[currentPlayerIndex].tableNumber = t;
-          seatedPlayers[currentPlayerIndex].seat = seat;
-          currentPlayerIndex++;
-        }
+    // Group players per table
+    final tablePlayers = <int, List<Player>>{};
+    for (var p in seatedPlayers) {
+      tablePlayers.putIfAbsent(p.tableNumber, () => []).add(p);
+    }
+
+    // Track original positions
+    final originalPositions = {
+      for (var p in seatedPlayers)
+        p.id: {'table': p.tableNumber, 'seat': p.seat},
+    };
+
+    // Build list of players to move: from tables with surplus choose random players to move
+    final rng = Random();
+    final playersToMove = <Player>[];
+    final deficits = <int, int>{}; // table -> how many needed
+
+    // Determine deficits for each table (including new tables)
+    for (int table = 1; table <= requiredNumTables; table++) {
+      final currentCount = tablePlayers[table]?.length ?? 0;
+      final expected = expectedSizes[table - 1];
+      if (currentCount < expected) {
+        deficits[table] = expected - currentCount;
       }
     }
 
-    // Save all changes
-    for (var p in seatedPlayers) {
-      StorageService.savePlayer(p);
+    // For surplus tables, pick random players to move out
+    for (var entry in tablePlayers.entries.toList()) {
+      final table = entry.key;
+      final list = List<Player>.from(entry.value);
+      final expected = (table >= 1 && table <= expectedSizes.length)
+          ? expectedSizes[table - 1]
+          : 0;
+      final surplus = list.length - expected;
+      if (surplus > 0) {
+        // Shuffle and take 'surplus' players to move
+        list.shuffle(rng);
+        final toMove = list.take(surplus).toList();
+        playersToMove.addAll(toMove);
+        // Remove moved players from tablePlayers so remaining players keep their seats
+        tablePlayers[table] = list.skip(surplus).toList();
+      }
     }
-    notifyListeners();
+
+    // Assign moved players into deficit tables
+    final movedList = <Player>[];
+    for (var destEntry in deficits.entries) {
+      final destTable = destEntry.key;
+      var need = destEntry.value;
+      while (need > 0 && playersToMove.isNotEmpty) {
+        final pl = playersToMove.removeLast();
+        // determine available seats on dest table
+        final occupiedSeats = (tablePlayers[destTable] ?? [])
+            .map((p) => p.seat)
+            .toSet();
+        final assignedSeats = movedList
+            .where((p) => p.tableNumber == destTable)
+            .map((p) => p.seat)
+            .toSet();
+        final unavailable = occupiedSeats.union(assignedSeats);
+        int seat = 1;
+        while (unavailable.contains(seat)) seat++;
+        pl.tableNumber = destTable;
+        pl.seat = seat;
+        // add to dest roster
+        tablePlayers.putIfAbsent(destTable, () => []).add(pl);
+        movedList.add(pl);
+        need--;
+      }
+    }
+
+    // Save moved players and prepare pendingPlayerMoves
+    for (var p in movedList) {
+      final orig = originalPositions[p.id];
+      final fromTable = orig?['table'] ?? 0;
+      final fromSeat = orig?['seat'] ?? 0;
+      pendingPlayerMoves.add(
+        PlayerMove(
+          player: p,
+          fromTable: fromTable,
+          fromSeat: fromSeat,
+          toTable: p.tableNumber,
+          toSeat: p.seat,
+        ),
+      );
+      if (_storageAvailable) StorageService.savePlayer(p);
+    }
+
+    if (pendingPlayerMoves.isNotEmpty) notifyListeners();
   }
 
   void togglePlayerPaidStatus(String playerId) {
     final p = players.firstWhere((x) => x.id == playerId);
     p.paid = !p.paid;
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
     notifyListeners();
   }
 
-  // Compra e transações
   void buyIn(String playerId, int amount) {
     final p = players.firstWhere((x) => x.id == playerId);
     p.chips += amount;
     p.buyins++;
     p.totalSpent += amount;
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
     final tx = PlayerTransaction(
       id: const Uuid().v4(),
       playerId: playerId,
@@ -316,7 +498,7 @@ class TournamentController extends ChangeNotifier {
     p.chips += amount;
     p.rebuys++;
     p.totalSpent += amount;
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
     final tx = PlayerTransaction(
       id: const Uuid().v4(),
       playerId: playerId,
@@ -332,7 +514,7 @@ class TournamentController extends ChangeNotifier {
     p.chips += amount * 2;
     p.rebuys += 2;
     p.totalSpent += amount * 2;
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
     final tx = PlayerTransaction(
       id: const Uuid().v4(),
       playerId: playerId,
@@ -348,7 +530,7 @@ class TournamentController extends ChangeNotifier {
     p.chips += amount;
     p.addons++;
     p.totalSpent += amount;
-    StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.savePlayer(p);
     final tx = PlayerTransaction(
       id: const Uuid().v4(),
       playerId: playerId,
@@ -359,48 +541,39 @@ class TournamentController extends ChangeNotifier {
     addTransaction(tx);
   }
 
-  void eliminatePlayer(String playerId) {
-    final p = players.firstWhere((x) => x.id == playerId);
-    p.seated = false;
-    p.seat = 0;
-    p.tableNumber = 0;
-    balanceTables();
+  // Métodos para atualizar valores do torneio
+  void updateBuyInAmount(int amount) {
+    buyInAmount = amount;
+    if (_storageAvailable) StorageService.saveValue('buyInAmount', amount);
     notifyListeners();
   }
 
-  List<Payout> payouts = [];
-
-  void calculatePayouts() {
-    final totalPool = _calculateTotalPool();
-    final rakeAmount = (totalPool * 0.2).toInt();
-    final prizePool = totalPool - rakeAmount;
-
-    final remaining = players.where((p) => p.seated).toList();
-    if (remaining.isEmpty) return;
-
-    final prizePerPlayer = prizePool ~/ remaining.length;
-    payouts.clear();
-    for (var i = 0; i < remaining.length; i++) {
-      payouts.add(
-        Payout(
-          id: const Uuid().v4(),
-          playerId: remaining[i].id,
-          amount: prizePerPlayer,
-          position: '${i + 1}º',
-          agreed: false,
-        ),
-      );
-    }
+  void updateRebuyAmount(int amount) {
+    rebuyAmount = amount;
+    if (_storageAvailable) StorageService.saveValue('rebuyAmount', amount);
     notifyListeners();
   }
 
-  int _calculateTotalPool() {
-    var total = 0;
-    for (final p in players) {
-      final balance = balanceFor(p.id);
-      if (balance > 0) total += balance;
-    }
-    return total;
+  void updateAddonAmount(int amount) {
+    addonAmount = amount;
+    if (_storageAvailable) StorageService.saveValue('addonAmount', amount);
+    notifyListeners();
+  }
+
+  // Preset Management
+  Future<void> saveCurrentSettingsAsPreset(String name) async {
+    final preset = TournamentPreset(
+      name: name,
+      levels: levels,
+      buyInAmount: buyInAmount,
+      rebuyAmount: rebuyAmount,
+      addonAmount: addonAmount,
+    );
+    // Save preset in memory and optionally persist
+    presets.removeWhere((p) => p.name == name);
+    presets.add(preset);
+    if (_storageAvailable) await StorageService.savePreset(preset);
+    notifyListeners();
   }
 
   void agreedBubble(String playerId) {
@@ -417,6 +590,90 @@ class TournamentController extends ChangeNotifier {
       addTransaction(tx);
       notifyListeners();
     }
+  }
+
+  void calculatePayouts() {
+    // compute total pool from transactions
+    var totalPool = 0;
+    for (final t in transactions) {
+      if (t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy')
+        totalPool += t.amount;
+    }
+    final rake = (totalPool * 0.2).toInt();
+    final prizePool = totalPool - rake;
+
+    final activePlayers = players.where((p) => p.seated).toList();
+    if (activePlayers.isEmpty) return;
+
+    List<double> payoutStructure() {
+      final pc = activePlayers.length;
+      if (pc <= 3) return [1.0];
+      if (pc <= 5) return [0.65, 0.35];
+      if (pc <= 7) return [0.50, 0.30, 0.20];
+      if (pc <= 10) return [0.45, 0.25, 0.15, 0.15];
+      if (pc == 9) return [0.50, 0.30, 0.20];
+      if (pc <= 15) return [0.40, 0.30, 0.20, 0.10];
+      if (pc <= 20) return [0.35, 0.25, 0.18, 0.12, 0.10];
+      if (pc > 20) return [0.30, 0.20, 0.15, 0.12, 0.10, 0.08, 0.05];
+      return [];
+    }
+
+    final structure = payoutStructure();
+    if (structure.isEmpty) return;
+
+    payouts.clear();
+    final playersToPay = activePlayers.take(structure.length).toList();
+    for (var i = 0; i < structure.length; i++) {
+      final p = playersToPay[i];
+      final amount = (prizePool * structure[i]).round();
+      final position = '${i + 1}º';
+      payouts.add(
+        Payout(
+          id: const Uuid().v4(),
+          playerId: p.id,
+          amount: amount,
+          position: position,
+        ),
+      );
+    }
+    notifyListeners();
+  }
+
+  void deletePreset(String name) {
+    presets.removeWhere((p) => p.name == name);
+    if (_storageAvailable) StorageService.deletePreset(name);
+    notifyListeners();
+  }
+
+  void loadPreset(String name) {
+    final preset = presets.firstWhereOrNull((p) => p.name == name);
+    if (preset == null) return;
+    levels = preset.levels;
+    buyInAmount = preset.buyInAmount;
+    rebuyAmount = preset.rebuyAmount;
+    addonAmount = preset.addonAmount;
+    if (_storageAvailable) {
+      StorageService.saveValue('buyInAmount', buyInAmount);
+      StorageService.saveValue('rebuyAmount', rebuyAmount);
+      StorageService.saveValue('addonAmount', addonAmount);
+    }
+    notifyListeners();
+  }
+
+  Player? playerById(String id) {
+    return players.firstWhereOrNull((p) => p.id == id);
+  }
+
+  void eliminatePlayer(String playerId) {
+    final p = players.firstWhereOrNull((x) => x.id == playerId);
+    if (p == null) return;
+    p.seated = false;
+    p.seat = 0;
+    p.tableNumber = 0;
+    if (_storageAvailable) StorageService.savePlayer(p);
+    // rebalance remaining players
+    balanceTables();
+    notifyListeners();
   }
 
   // Backwards-compatible methods used by UI
@@ -450,7 +707,7 @@ class TournamentController extends ChangeNotifier {
 
     if (playerIndex == -1) {
       // Player not found, just remove transaction
-      StorageService.deleteTransaction(lastTx.id);
+      if (_storageAvailable) StorageService.deleteTransaction(lastTx.id);
       transactions.removeLast();
       notifyListeners();
       return 'Transação órfã removida.';
@@ -490,8 +747,8 @@ class TournamentController extends ChangeNotifier {
         break;
     }
 
-    StorageService.savePlayer(p);
-    StorageService.deleteTransaction(lastTx.id);
+    if (_storageAvailable) StorageService.savePlayer(p);
+    if (_storageAvailable) StorageService.deleteTransaction(lastTx.id);
     transactions.removeLast();
     notifyListeners();
 
@@ -502,22 +759,23 @@ class TournamentController extends ChangeNotifier {
     // Pause timer
     _pause();
 
-    // Reset timer to level 1
+    // Reset timer e níveis
     _setLevel(0);
 
-    // Clear all data from persistence by deleting each item
-    for (final p in players) {
-      StorageService.deletePlayer(p.id);
-    }
+    // Limpa transações
     for (final t in transactions) {
-      StorageService.deleteTransaction(t.id);
+      if (_storageAvailable) StorageService.deleteTransaction(t.id);
     }
-
-    // Clear all data in memory
-    players.clear();
     transactions.clear();
     payouts.clear();
 
+    // Reseta os dados dos jogadores, mas não os remove
+    for (final p in players) {
+      p.resetForNewTournament();
+      if (_storageAvailable) StorageService.savePlayer(p);
+    }
+
+    balanceTables();
     notifyListeners();
   }
 }

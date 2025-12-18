@@ -55,19 +55,18 @@ class _PlayersPageState extends State<PlayersPage> {
                   leading: CircleAvatar(
                     child: Text(p.name.isNotEmpty ? p.name[0] : '?'),
                   ),
-                  title: Text(p.name),
-                  subtitle: Text('Chips: ${p.chips}  Seat: ${p.seat}'),
+                  title: Text(p.name, style: TextStyle(fontWeight: p.seated ? FontWeight.bold : FontWeight.normal)),
+                  subtitle: p.seated ? Text('Lugar: ${p.seat} - Chips: ${p.chips}') : const Text('Fora do torneio'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.event_seat),
-                        onPressed: () => _showSeatDialog(context, p),
-                      ),
-                      IconButton(
                         icon: const Icon(Icons.delete),
                         onPressed: () => controller.removePlayer(p.id),
                       ),
+                      Checkbox(value: p.seated, onChanged: (value) {
+                        controller.togglePlayerParticipation(p.id);
+                      }),
                     ],
                   ),
                 );
@@ -86,53 +85,22 @@ class _PlayersPageState extends State<PlayersPage> {
       context,
       listen: false,
     );
-    final id = Random().nextInt(1 << 31).toString();
-    final p = Player(id: id, name: _nameCtrl.text.trim(), chips: 0);
+    final name = _nameCtrl.text.trim();
+
+    // Verificar se o jogador já existe
+    if (controller.players.any((p) => p.name.toLowerCase() == name.toLowerCase())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Jogador "$name" já existe.')),
+      );
+      return;
+    }
+
+    final p = Player(id: Random().nextInt(1 << 31).toString(), name: name);
     controller.addPlayer(p);
-    // Auto-seat o novo jogador
-    Future.delayed(const Duration(milliseconds: 100), () {
-      controller.autoSeatPlayer(id);
-      controller.balanceTables();
-    });
+    // Senta o jogador e balanceia as mesas
+    controller.seatPlayer(p.id, 0); // seat 0 para auto-atribuição
+
     _nameCtrl.clear();
     _nameFocusNode.requestFocus();
-  }
-
-  void _showSeatDialog(BuildContext context, Player p) {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        int selected = p.seat;
-        return AlertDialog(
-          title: const Text('Escolher lugar'),
-          content: DropdownButton<int>(
-            value: selected == 0 ? null : selected,
-            hint: const Text('Selecione'),
-            items: List.generate(9, (i) => i + 1)
-                .map((s) => DropdownMenuItem(value: s, child: Text('Lugar $s')))
-                .toList(),
-            onChanged: (v) => setState(() => selected = v ?? 0),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
-            ),
-            TextButton(
-              onPressed: () {
-                if (selected > 0) {
-                  Provider.of<TournamentController>(
-                    context,
-                    listen: false,
-                  ).seatPlayer(p.id, selected);
-                }
-                Navigator.of(ctx).pop();
-              },
-              child: const Text('Confirmar'),
-            ),
-          ],
-        );
-      },
-    );
   }
 }

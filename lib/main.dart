@@ -6,6 +6,7 @@ import 'pages/table_page.dart';
 import 'pages/finance_page.dart';
 import 'pages/bubble_agreement_page.dart';
 import 'pages/payouts_page.dart';
+import 'pages/ranking_page.dart';
 import 'pages/settings_page.dart';
 import 'widgets/central_timer_clock.dart';
 
@@ -49,6 +50,7 @@ class _MainShellState extends State<MainShell> {
     'Financeiro', // 2
     'Bolha', // 3
     'Premiação', // 4
+    'Ranking', // 5
     'Configurações', // 5
   ];
 
@@ -71,6 +73,10 @@ class _MainShellState extends State<MainShell> {
       label: Text('Premiação'),
     ),
     NavigationRailDestination(
+      icon: Icon(Icons.emoji_events),
+      label: Text('Ranking'),
+    ),
+    NavigationRailDestination(
       icon: Icon(Icons.settings),
       label: Text('Configurações'),
     ),
@@ -86,6 +92,7 @@ class _MainShellState extends State<MainShell> {
       const FinancePage(),
       const BubbleAgreementPage(),
       const PayoutsPage(),
+      const RankingPage(),
       const SettingsPage(),
     ];
 
@@ -100,7 +107,14 @@ class _MainShellState extends State<MainShell> {
           },
           labelType: NavigationRailLabelType.all,
           destinations: _destinations,
-          leading: const FlutterLogo(),
+          leading: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              FlutterLogo(),
+              SizedBox(height: 4),
+              Text('TomasPoker', style: TextStyle(fontSize: 12)),
+            ],
+          ),
           trailing: const Expanded(child: SizedBox()),
         ),
         const VerticalDivider(thickness: 1, width: 1),
@@ -155,7 +169,7 @@ class _MainShellState extends State<MainShell> {
       builder: (ctx) => AlertDialog(
         title: const Text('Reiniciar Torneio?'),
         content: const Text(
-          'Esta ação apagará todos os jogadores, transações e dados do torneio atual. Deseja continuar?',
+          'Isto irá zerar os dados da partida atual (fichas, posições), mas manterá o histórico de jogadores e transações para o ranking. Deseja continuar?',
         ),
         actions: [
           TextButton(

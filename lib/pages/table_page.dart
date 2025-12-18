@@ -5,9 +5,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/tournament_controller.dart';
 import '../models/player.dart';
+import '../models/player_move.dart';
 
-class TablePage extends StatelessWidget {
+class TablePage extends StatefulWidget {
   const TablePage({super.key});
+
+  @override
+  State<TablePage> createState() => _TablePageState();
+}
+
+class _TablePageState extends State<TablePage> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final controller = Provider.of<TournamentController>(
+      context,
+      listen: false,
+    );
+    // Use a post-frame callback to show the dialog after the build is complete.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (controller.pendingPlayerMoves.isNotEmpty) {
+        _showTableBalancingDialog(context, controller.pendingPlayerMoves);
+        controller.pendingPlayerMoves.clear();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +61,42 @@ class TablePage extends StatelessWidget {
       },
     );
   }
+
+  void _showTableBalancingDialog(BuildContext context, List<PlayerMove> moves) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Balanceamento de Mesas'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: moves.length,
+            itemBuilder: (context, index) {
+              final move = moves[index];
+              return ListTile(
+                leading: const Icon(Icons.sync_alt),
+                title: Text(
+                  move.player.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: Text(
+                  'Mesa ${move.fromTable}:${move.fromSeat} → Mesa ${move.toTable}:${move.toSeat}',
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class PokerTableWidget extends StatelessWidget {
@@ -56,7 +114,7 @@ class PokerTableWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
-      children: [        
+      children: [
         Container(color: Theme.of(context).colorScheme.surface.withGreen(100)),
         Center(
           child: LayoutBuilder(
@@ -142,7 +200,8 @@ class PokerTableWidget extends StatelessWidget {
     // Os assentos são distribuídos no sentido horário.
     // Ajuste para centralizar o assento 5 no topo e distribuir os outros simetricamente.
     // O ângulo inicial é deslocado para que o assento 1 fique à esquerda do topo.
-    final angle = -pi / 2 - (pi / totalSeats) + (seatNumber * (2 * pi / totalSeats));
+    final angle =
+        -pi / 2 - (pi / totalSeats) + (seatNumber * (2 * pi / totalSeats));
 
     // Calcula a posição usando raios elípticos
     final x = centerX + radiusX * cos(angle);
@@ -283,7 +342,6 @@ class PokerTableWidget extends StatelessWidget {
     TournamentController controller,
     Player player,
   ) {
-    final amounts = [100, 500, 1000, 2000, 5000];
     showModalBottomSheet(
       context: context,
       builder: (ctx) {
@@ -308,80 +366,90 @@ class PokerTableWidget extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  ...amounts.map(
-                    (amt) {
-                      // Botão de Rebuy
-                      if (controller.isRebuyAllowed) {
-                        return SizedBox(
-                          width: 90,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              controller.rebuy(player.id, amt);
-                              Navigator.of(ctx).pop();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
+                  // Botão de Rebuy
+                  if (controller.isRebuyAllowed)
+                    SizedBox(
+                      width: 90,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          controller.rebuy(player.id, controller.rebuyAmount);
+                          Navigator.of(ctx).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Rebuy',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
                             ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('Rebuy',
-                                    style: TextStyle(
-                                        color: Colors.white, fontSize: 10)),
-                                Text('R\$ $amt',
-                                    style: const TextStyle(
-                                        color: Colors.white, fontSize: 9)),
-                              ],
+                            Text(
+                              'R\$ ${controller.rebuyAmount}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                  ...amounts.map(
-                    (amt) {
-                      // Botão de Rebuy Duplo
-                      if (controller.isRebuyAllowed) {
-                        return SizedBox(
-                          width: 90,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              controller.doubleRebuy(player.id, amt);
-                              Navigator.of(ctx).pop();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Botão de Rebuy Duplo
+                  if (controller.isRebuyAllowed)
+                    SizedBox(
+                      width: 90,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          controller.doubleRebuy(
+                            player.id,
+                            controller.rebuyAmount,
+                          );
+                          Navigator.of(ctx).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              '2x Rebuy',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                              ),
                             ),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('2x Rebuy',
-                                    style: TextStyle(
-                                        color: Colors.white, fontSize: 10)),
-                                Text('R\$ ${amt * 2}',
-                                    style: const TextStyle(
-                                        color: Colors.white, fontSize: 9)),
-                              ],
+                            Text(
+                              'R\$ ${controller.rebuyAmount * 2}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                              ),
                             ),
-                          ),
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                  ...amounts.map(
-                    (amt) {
-                      // Botão de Add-on
-                      final canAddon = controller.isAddonAllowed &&
-                          player.addons == 0;
-                      if (controller.isAddonAllowed) {
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Botão de Add-on
+                  if (controller.isAddonAllowed)
+                    Builder(
+                      builder: (context) {
+                        final canAddon =
+                            controller.isAddonAllowed && player.addons == 0;
                         return SizedBox(
                           width: 90,
                           child: ElevatedButton(
                             onPressed: canAddon
                                 ? () {
-                                    controller.addon(player.id, amt);
+                                    controller.addon(
+                                      player.id,
+                                      controller.addonAmount,
+                                    );
                                     Navigator.of(ctx).pop();
                                   }
                                 : null, // Desabilita se não puder fazer addon
@@ -402,7 +470,7 @@ class PokerTableWidget extends StatelessWidget {
                                   ),
                                 ),
                                 Text(
-                                  'R\$ $amt',
+                                  'R\$ ${controller.addonAmount}',
                                   style: TextStyle(
                                     color: canAddon
                                         ? Colors.white
@@ -414,10 +482,8 @@ class PokerTableWidget extends StatelessWidget {
                             ),
                           ),
                         );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
+                      },
+                    ),
                 ],
               ),
               const SizedBox(height: 8),

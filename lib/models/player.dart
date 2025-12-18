@@ -25,6 +25,18 @@ class Player {
     this.paid = false,
   });
 
+  void resetForNewTournament() {
+    chips = 0;
+    seated = false;
+    seat = 0;
+    tableNumber = 0;
+    buyins = 0;
+    rebuys = 0;
+    addons = 0;
+    totalSpent = 0;
+    paid = false;
+  }
+
   Map<String, dynamic> toMap() => {
     'id': id,
     'name': name,
