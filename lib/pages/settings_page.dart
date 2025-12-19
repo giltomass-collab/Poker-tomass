@@ -56,9 +56,16 @@ class _ValuesSettingsTab extends StatefulWidget {
 }
 
 class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
+  // Controllers for costs
   late TextEditingController _buyinCtrl;
   late TextEditingController _rebuyCtrl;
   late TextEditingController _addonCtrl;
+
+  // Controllers for chips
+  late TextEditingController _buyinChipsCtrl;
+  late TextEditingController _rebuyChipsCtrl;
+  late TextEditingController _doubleRebuyChipsCtrl;
+  late TextEditingController _addonChipsCtrl;
 
   @override
   void didChangeDependencies() {
@@ -67,16 +74,34 @@ class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
       context,
       listen: false,
     );
+    // Init cost controllers
     _buyinCtrl = TextEditingController(text: controller.buyInAmount.toString());
     _rebuyCtrl = TextEditingController(text: controller.rebuyAmount.toString());
     _addonCtrl = TextEditingController(text: controller.addonAmount.toString());
+
+    // Init chip controllers
+    _buyinChipsCtrl =
+        TextEditingController(text: controller.buyInChips.toString());
+    _rebuyChipsCtrl =
+        TextEditingController(text: controller.rebuyChips.toString());
+    _doubleRebuyChipsCtrl =
+        TextEditingController(text: controller.doubleRebuyChips.toString());
+    _addonChipsCtrl =
+        TextEditingController(text: controller.addonChips.toString());
   }
 
   @override
   void dispose() {
+    // Dispose cost controllers
     _buyinCtrl.dispose();
     _rebuyCtrl.dispose();
     _addonCtrl.dispose();
+
+    // Dispose chip controllers
+    _buyinChipsCtrl.dispose();
+    _rebuyChipsCtrl.dispose();
+    _doubleRebuyChipsCtrl.dispose();
+    _addonChipsCtrl.dispose();
     super.dispose();
   }
 
@@ -89,17 +114,18 @@ class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Section for Costs
         const ListTile(
-          leading: Icon(Icons.attach_money),
-          title: Text('Valores do Torneio'),
-          subtitle: Text('Defina os custos para as ações do torneio.'),
+          leading: Icon(Icons.monetization_on_outlined),
+          title: Text('Custos do Torneio'),
+          subtitle: Text('Defina os valores em R\$ para cada ação.'),
         ),
         const Divider(),
         TextField(
           controller: _buyinCtrl,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'Valor do Buy-in',
+            labelText: 'Custo do Buy-in',
             prefixText: 'R\$ ',
           ),
           onChanged: (value) {
@@ -114,7 +140,7 @@ class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
           controller: _rebuyCtrl,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'Valor do Rebuy',
+            labelText: 'Custo do Rebuy / Rebuy Duplo',
             prefixText: 'R\$ ',
           ),
           onChanged: (value) {
@@ -129,7 +155,7 @@ class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
           controller: _addonCtrl,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'Valor do Add-on',
+            labelText: 'Custo do Add-on',
             prefixText: 'R\$ ',
           ),
           onChanged: (value) {
@@ -139,10 +165,76 @@ class _ValuesSettingsTabState extends State<_ValuesSettingsTab> {
             }
           },
         ),
+        const SizedBox(height: 24),
+
+        // Section for Chips
+        const ListTile(
+          leading: Icon(Icons.memory),
+          title: Text('Fichas do Torneio'),
+          subtitle: Text('Defina a quantidade de fichas para cada ação.'),
+        ),
+        const Divider(),
+        TextField(
+          controller: _buyinChipsCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Fichas do Buy-in',
+          ),
+          onChanged: (value) {
+            final chips = int.tryParse(value);
+            if (chips != null) {
+              controller.updateBuyInChips(chips);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _rebuyChipsCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Fichas do Rebuy',
+          ),
+          onChanged: (value) {
+            final chips = int.tryParse(value);
+            if (chips != null) {
+              controller.updateRebuyChips(chips);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _doubleRebuyChipsCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Fichas do Rebuy Duplo',
+          ),
+          onChanged: (value) {
+            final chips = int.tryParse(value);
+            if (chips != null) {
+              controller.updateDoubleRebuyChips(chips);
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _addonChipsCtrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Fichas do Add-on',
+          ),
+          onChanged: (value) {
+            final chips = int.tryParse(value);
+            if (chips != null) {
+              controller.updateAddonChips(chips);
+            }
+          },
+        ),
       ],
     );
   }
 }
+
+
 
 class _LevelEditTile extends StatefulWidget {
   final BlindLevel level;

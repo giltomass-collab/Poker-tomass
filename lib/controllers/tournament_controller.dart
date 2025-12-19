@@ -26,6 +26,12 @@ class TournamentController extends ChangeNotifier {
   int rebuyAmount = 1000;
   int addonAmount = 2000;
 
+  // Configurações de fichas do torneio
+  int buyInChips = 10000;
+  int rebuyChips = 10000;
+  int doubleRebuyChips = 20000;
+  int addonChips = 20000;
+
   // Presets
   List<TournamentPreset> presets = [];
 
@@ -38,7 +44,7 @@ class TournamentController extends ChangeNotifier {
   int? testSeed; // optional seed for deterministic test randomization
 
   TournamentController({bool initStorage = true, int? testSeed})
-    : testSeed = testSeed {
+      : testSeed = testSeed {
     _loadDefaultLevels();
     _setLevel(0);
     // initialize storage and load players (skip in tests if requested)
@@ -67,6 +73,12 @@ class TournamentController extends ChangeNotifier {
       buyInAmount = StorageService.loadValue('buyInAmount', defaultValue: 1000);
       rebuyAmount = StorageService.loadValue('rebuyAmount', defaultValue: 1000);
       addonAmount = StorageService.loadValue('addonAmount', defaultValue: 2000);
+      // Load tournament chips
+      buyInChips = StorageService.loadValue('buyInChips', defaultValue: 10000);
+      rebuyChips = StorageService.loadValue('rebuyChips', defaultValue: 10000);
+      doubleRebuyChips =
+          StorageService.loadValue('doubleRebuyChips', defaultValue: 20000);
+      addonChips = StorageService.loadValue('addonChips', defaultValue: 20000);
       // Load presets
       presets = StorageService.loadPresets();
       _storageAvailable = true;
@@ -357,14 +369,9 @@ class TournamentController extends ChangeNotifier {
     if (unseatedPlayer.seated) return;
 
     // Find available seats (1-9)
-    final occupiedSeats = players
-        .where((p) => p.seated)
-        .map((p) => p.seat)
-        .toSet();
-    final availableSeats = List.generate(
-      9,
-      (i) => i + 1,
-    ).where((s) => !occupiedSeats.contains(s)).toList();
+    final occupiedSeats = players.where((p) => p.seated).map((p) => p.seat).toSet();
+    final availableSeats =
+        List.generate(9, (i) => i + 1,).where((s) => !occupiedSeats.contains(s)).toList();
 
     if (availableSeats.isNotEmpty) {
       availableSeats.shuffle();
@@ -407,12 +414,11 @@ class TournamentController extends ChangeNotifier {
     }
 
     // If a table no longer exists after a player is eliminated, fill it up
-    for(int i = 1; i <= numTables; i++) {
-      if(!currentCounts.keys.contains(i)) {
+    for (int i = 1; i <= numTables; i++) {
+      if (!currentCounts.keys.contains(i)) {
         currentCounts[i] = 0;
       }
     }
-
 
     // Identify over-full and under-full tables
     final overFullTables = <int, int>{};
@@ -420,20 +426,20 @@ class TournamentController extends ChangeNotifier {
 
     for (final tableNum in currentCounts.keys) {
       final current = currentCounts[tableNum] ?? 0;
-      final target = targetCounts[tableNum] ?? (requiredNumTables < tableNum ? 0 : playersPerTable);
+      final target = targetCounts[tableNum] ??
+          (requiredNumTables < tableNum ? 0 : playersPerTable);
       if (current > target) {
         overFullTables[tableNum] = current - target;
       } else if (current < target) {
         underFullTables[tableNum] = target - current;
       }
     }
-    
+
     // If we need to close a table
-    if(numTables > requiredNumTables) {
+    if (numTables > requiredNumTables) {
       final tableToClose = tables.last;
       overFullTables[tableToClose] = currentCounts[tableToClose] ?? 0;
     }
-
 
     if (overFullTables.isEmpty) {
       notifyListeners();
@@ -451,10 +457,8 @@ class TournamentController extends ChangeNotifier {
     // Get available seats in under-full tables
     final availableSeats = <Map<String, int>>[];
     underFullTables.forEach((tableNum, count) {
-      final occupiedSeats = seatedPlayers
-          .where((p) => p.tableNumber == tableNum)
-          .map((p) => p.seat)
-          .toSet();
+      final occupiedSeats =
+          seatedPlayers.where((p) => p.tableNumber == tableNum).map((p) => p.seat).toSet();
       for (int i = 1; i <= 9; i++) {
         if (!occupiedSeats.contains(i)) {
           availableSeats.add({'table': tableNum, 'seat': i});
@@ -499,7 +503,7 @@ class TournamentController extends ChangeNotifier {
 
   void buyIn(String playerId, int amount) {
     final p = players.firstWhere((x) => x.id == playerId);
-    p.chips += amount;
+    p.chips += buyInChips;
     p.buyins++;
     p.totalSpent += amount;
     if (_storageAvailable) StorageService.savePlayer(p);
@@ -515,7 +519,7 @@ class TournamentController extends ChangeNotifier {
 
   void rebuy(String playerId, int amount) {
     final p = players.firstWhere((x) => x.id == playerId);
-    p.chips += amount;
+    p.chips += rebuyChips;
     p.rebuys++;
     p.totalSpent += amount;
     if (_storageAvailable) StorageService.savePlayer(p);
@@ -531,7 +535,7 @@ class TournamentController extends ChangeNotifier {
 
   void doubleRebuy(String playerId, int amount) {
     final p = players.firstWhere((x) => x.id == playerId);
-    p.chips += amount * 2;
+    p.chips += doubleRebuyChips;
     p.rebuys += 2;
     p.totalSpent += amount * 2;
     if (_storageAvailable) StorageService.savePlayer(p);
@@ -539,7 +543,7 @@ class TournamentController extends ChangeNotifier {
       id: const Uuid().v4(),
       playerId: playerId,
       time: DateTime.now(),
-      type: 'rebuy',
+      type: 'double_rebuy',
       amount: amount * 2,
     );
     addTransaction(tx);
@@ -547,7 +551,7 @@ class TournamentController extends ChangeNotifier {
 
   void addon(String playerId, int amount) {
     final p = players.firstWhere((x) => x.id == playerId);
-    p.chips += amount;
+    p.chips += addonChips;
     p.addons++;
     p.totalSpent += amount;
     if (_storageAvailable) StorageService.savePlayer(p);
@@ -564,9 +568,7 @@ class TournamentController extends ChangeNotifier {
   void addonForAllEligiblePlayers() {
     if (!isAddonAllowed) return;
 
-    final eligiblePlayers = players
-        .where((p) => p.seated && p.addons == 0)
-        .toList();
+    final eligiblePlayers = players.where((p) => p.seated && p.addons == 0).toList();
 
     for (final player in eligiblePlayers) {
       addon(player.id, addonAmount);
@@ -590,6 +592,31 @@ class TournamentController extends ChangeNotifier {
   void updateAddonAmount(int amount) {
     addonAmount = amount;
     if (_storageAvailable) StorageService.saveValue('addonAmount', amount);
+    notifyListeners();
+  }
+
+  // Métodos para atualizar fichas do torneio
+  void updateBuyInChips(int chips) {
+    buyInChips = chips;
+    if (_storageAvailable) StorageService.saveValue('buyInChips', chips);
+    notifyListeners();
+  }
+
+  void updateRebuyChips(int chips) {
+    rebuyChips = chips;
+    if (_storageAvailable) StorageService.saveValue('rebuyChips', chips);
+    notifyListeners();
+  }
+
+  void updateDoubleRebuyChips(int chips) {
+    doubleRebuyChips = chips;
+    if (_storageAvailable) StorageService.saveValue('doubleRebuyChips', chips);
+    notifyListeners();
+  }
+
+  void updateAddonChips(int chips) {
+    addonChips = chips;
+    if (_storageAvailable) StorageService.saveValue('addonChips', chips);
     notifyListeners();
   }
 
@@ -637,6 +664,10 @@ class TournamentController extends ChangeNotifier {
   void eliminatePlayer(String playerId) {
     final p = players.firstWhereOrNull((x) => x.id == playerId);
     if (p == null) return;
+
+    // Assign finishing rank before changing seated status
+    p.finishingRank = players.where((p) => p.seated).length;
+
     p.seated = false;
     p.seat = 0;
     p.tableNumber = 0;
@@ -701,7 +732,10 @@ class TournamentController extends ChangeNotifier {
     // compute total pool from transactions
     var totalPool = 0;
     for (final t in transactions) {
-      if (t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy') {
+      if (t.type == 'buyin' ||
+          t.type == 'addon' ||
+          t.type == 'rebuy' ||
+          t.type == 'double_rebuy') {
         totalPool += t.amount;
       }
     }
@@ -714,13 +748,14 @@ class TournamentController extends ChangeNotifier {
       return b.totalSpent.compareTo(a.totalSpent);
     });
 
-    if (activePlayers.isEmpty) {
+    final playerCount = players.where((p) => p.buyins > 0).length;
+    if (playerCount == 0) {
       payouts.clear();
       notifyListeners();
       return;
     }
 
-    final structure = _getPayoutStructure(activePlayers.length);
+    final structure = _getPayoutStructure(playerCount);
     if (structure.isEmpty) {
       payouts.clear();
       notifyListeners();
@@ -731,23 +766,23 @@ class TournamentController extends ChangeNotifier {
     final playersToPay = activePlayers.take(structure.length).toList();
 
     for (var i = 0; i < structure.length; i++) {
-      final p = playersToPay[i];
       final amount = (prizePool * structure[i]).round();
       final position = '${i + 1}º';
 
-      // Check if a payout for this player already exists and is agreed upon,
-      // or if it was manually edited. Preserve these if possible.
-      final existingPayout = payouts.firstWhereOrNull(
-        (e) => e.playerId == p.id && e.position == position,
-      );
+      // The player ID here is for the currently-ranked player, which is fine
+      // for the PayoutsPage, as it shows a live ranking. The stats widget
+      // will use the final rank to show the actual winner.
+      final p = i < playersToPay.length
+          ? playersToPay[i]
+          : Player(id: 'unknown', name: '...');
 
       newPayouts.add(
         Payout(
-          id: existingPayout?.id ?? const Uuid().v4(),
+          id: const Uuid().v4(), // Always generate new ID for this temporary list
           playerId: p.id,
-          amount: existingPayout?.amount ?? amount, // Preserve manually edited amount or calculated
+          amount: amount,
           position: position,
-          agreed: existingPayout?.agreed ?? false,
+          agreed: false, // This list is a template, not for agreements
         ),
       );
     }
@@ -818,25 +853,23 @@ class TournamentController extends ChangeNotifier {
     final p = players[playerIndex];
 
     // Revert player stats
+    p.totalSpent -= lastTx.amount;
 
     switch (lastTx.type) {
       case 'buyin':
-        p.totalSpent -= lastTx.amount;
-        p.chips -= lastTx.amount;
+        p.chips -= buyInChips;
         p.buyins--;
         break;
       case 'rebuy':
-        p.totalSpent -= lastTx.amount;
-        p.chips -= lastTx.amount;
-        // This simplifies double-rebuy undo to a single step.
-        // A double rebuy is one transaction, so we decrement by one transaction.
-        // The amount is correct. The count of rebuys might be off if a double rebuy was done.
-        // For now, we assume single rebuys or that this simplification is acceptable.
+        p.chips -= rebuyChips;
         if (p.rebuys > 0) p.rebuys--;
         break;
+      case 'double_rebuy':
+        p.chips -= doubleRebuyChips;
+        if (p.rebuys > 1) p.rebuys -= 2;
+        break;
       case 'addon':
-        p.totalSpent -= lastTx.amount;
-        p.chips -= lastTx.amount;
+        p.chips -= addonChips;
         p.addons--;
         break;
       case 'payout':

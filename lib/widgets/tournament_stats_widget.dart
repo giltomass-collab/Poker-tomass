@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:collection/collection.dart';
 import '../controllers/tournament_controller.dart';
+import '../models/player.dart';
 
 class TournamentStatsWidget extends StatefulWidget {
   final TournamentController controller;
@@ -38,56 +40,64 @@ class _TournamentStatsWidgetState extends State<TournamentStatsWidget> {
     final totalAddons = players.fold<int>(0, (sum, p) => sum + p.addons);
     final prizePool = controller.transactions
         .where((t) =>
-            t.type == 'buyin' || t.type == 'rebuy' || t.type == 'addon')
+            t.type == 'buyin' ||
+            t.type == 'rebuy' ||
+            t.type == 'double_rebuy' ||
+            t.type == 'addon')
         .fold<int>(0, (sum, t) => sum + t.amount);
+    final payouts = controller.payouts;
+
+    final List<Widget> stats = [
+      _buildStat('Jogadores', '$activePlayers/$totalPlayers'),
+      _buildStat('Fichas', '$totalChips'),
+      _buildStat('Rebuys', '$totalRebuys'),
+      _buildStat('Add-ons', '$totalAddons'),
+      _buildStat(
+        'Prêmio Total',
+        'R\$ $prizePool',
+        valueColor: Colors.green.shade300,
+      ),
+    ];
+
+    if (payouts.isNotEmpty) {
+      stats.addAll(payouts.map((payout) {
+        final position = int.tryParse(payout.position.replaceAll('º', ''));
+        Player? winner;
+        if (position != null) {
+          winner = controller.players
+              .firstWhereOrNull((p) => p.finishingRank == position);
+        }
+
+        return _buildStat(
+          '${payout.position}º Lugar',
+          'R\$ ${payout.amount}',
+          valueColor: position == 1 ? Colors.blue.shade300 : null,
+          subValue: winner?.name,
+        );
+      }).toList());
+    }
 
     return Card(
       elevation: 2,
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Padding(
         padding: const EdgeInsets.all(8.0),
-        child: Column(
-          children: [
-            Wrap(
-              spacing: 16.0,
-              runSpacing: 8.0,
-              alignment: WrapAlignment.spaceEvenly,
-              children: [
-                _buildStat('Jogadores', '$activePlayers/$totalPlayers'),
-                _buildStat('Fichas', '$totalChips'),
-                _buildStat('Rebuys', '$totalRebuys'),
-                _buildStat('Add-ons', '$totalAddons'),
-                _buildStat('Prêmio Total', 'R\$ $prizePool'),
-              ],
-            ),
-            const Divider(height: 20),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  controller.calculatePayouts();
-                });
-              },
-              child: const Text('Calcular Premiação'),
-            ),
-            if (controller.payouts.isNotEmpty)
-              ...controller.payouts.map(
-                (payout) {
-                  final player = controller.playerById(payout.playerId);
-                  return ListTile(
-                    dense: true,
-                    title: Text(
-                        '${payout.position} - ${player?.name ?? "Jogador não encontrado"}'),
-                    trailing: Text('R\$ ${payout.amount}'),
-                  );
-                },
-              ),
-          ],
+        child: Wrap(
+          spacing: 16.0,
+          runSpacing: 8.0,
+          alignment: WrapAlignment.spaceEvenly,
+          children: stats,
         ),
       ),
     );
   }
 
-  Widget _buildStat(String label, String value) {
+  Widget _buildStat(
+    String label,
+    String value, {
+    Color? valueColor,
+    String? subValue,
+  }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -101,11 +111,23 @@ class _TournamentStatsWidgetState extends State<TournamentStatsWidget> {
         const SizedBox(height: 2),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
+            color: valueColor,
           ),
         ),
+        if (subValue != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            subValue,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade300,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ]
       ],
     );
   }

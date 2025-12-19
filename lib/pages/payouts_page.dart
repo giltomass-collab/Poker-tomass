@@ -1,26 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:uuid/uuid.dart'; // Keep this import for Player model or general UUID if needed elsewhere
 import '../controllers/tournament_controller.dart';
-import '../models/player.dart';
-import '../models/payout.dart';
 import 'bubble_agreement_page.dart'; // Import the BubbleAgreementPage
 
-class PayoutsPage extends StatefulWidget {
+class PayoutsPage extends StatelessWidget {
   const PayoutsPage({super.key});
-
-  @override
-  State<PayoutsPage> createState() => _PayoutsPageState();
-}
-
-class _PayoutsPageState extends State<PayoutsPage> {
-  final Map<String, TextEditingController> _amountControllers = {};
-
-  @override
-  void dispose() {
-    _amountControllers.forEach((key, controller) => controller.dispose());
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +13,10 @@ class _PayoutsPageState extends State<PayoutsPage> {
         .where((t) => t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy')
         .fold<int>(0, (sum, tx) => sum + tx.amount);
     final prizePool = totalPool;
+    final payouts = controller.payouts;
+
+    // Create a string for the payout positions, e.g., "1º, 2º, 3º"
+    final payoutPositions = payouts.map((p) => p.position).join(', ');
 
     return Padding(
       padding: const EdgeInsets.all(12.0),
@@ -49,9 +37,10 @@ class _PayoutsPageState extends State<PayoutsPage> {
                       Text('R\$ $totalPool'),
                     ],
                   ),
-
+                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         'Prêmio Total:',
@@ -60,11 +49,27 @@ class _PayoutsPageState extends State<PayoutsPage> {
                           fontSize: 18,
                         ),
                       ),
-                      Text(
-                        'R\$ $prizePool',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'R\$ $prizePool',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (payoutPositions.isNotEmpty)
+                              Text(
+                                'Premiação para: $payoutPositions',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                          ],
                         ),
                       ),
                     ],
@@ -74,17 +79,15 @@ class _PayoutsPageState extends State<PayoutsPage> {
             ),
           ),
           const SizedBox(height: 12),
-          const SizedBox(height: 12),
           // Conditional "Acordo" button for bubble phase
           if (controller.isBubblePhase)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
               child: ElevatedButton.icon(
                 onPressed: () {
-                  // Implement bubble agreement logic here, e.g., navigate to bubble agreement page
-                  // or trigger a specific bubble agreement process in the controller
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => BubbleAgreementPage()),
+                    MaterialPageRoute(
+                        builder: (context) => const BubbleAgreementPage()),
                   );
                 },
                 icon: const Icon(Icons.handshake),
@@ -96,67 +99,40 @@ class _PayoutsPageState extends State<PayoutsPage> {
                 ),
               ),
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
+          // A title for the section below the card
+          if (payouts.isNotEmpty)
+            const Text(
+              'Detalhes da Premiação',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          const SizedBox(height: 10),
+
+          // Display payout details in a non-editable list
           Expanded(
             child: ListView.builder(
-              itemCount: controller.payouts.length,
+              itemCount: payouts.length,
               itemBuilder: (ctx, i) {
-                final p = controller.payouts[i];
-                final player = controller.players.firstWhere(
-                  (pl) => pl.id == p.playerId,
-                  orElse: () => Player(id: p.playerId, name: '—'),
-                );
-
-                final TextEditingController amountController =
-                    _amountControllers.putIfAbsent(
-                  p.id,
-                  () => TextEditingController(text: p.amount.toString()),
-                );
-                // Ensure the text is updated if payout amount changes externally
-                if (amountController.text != p.amount.toString()) {
-                  amountController.text = p.amount.toString();
-                }
+                final p = payouts[i];
+                // Player name is not available here unless we search for it.
+                // For now, just show position and amount.
+                final player = controller.playerById(p.playerId);
 
                 return Card(
                   margin: const EdgeInsets.symmetric(vertical: 4.0),
                   child: ListTile(
-                    title: Text('${p.position} — ${player.name}'),
-                    subtitle: Text('Acordo: ${p.agreed ? "Sim" : "Não"}'),
-                    trailing: SizedBox(
-                      width: 150, // Adjust width as needed
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Expanded(
-                            child: TextFormField(
-                              controller: amountController, // Use the managed controller
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                prefixText: 'R\$ ',
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                              ),
-                              onChanged: (value) {
-                                final newAmount = int.tryParse(value);
-                                if (newAmount != null && newAmount >= 0) {
-                                  controller.updatePayoutAmount(p.id, newAmount);
-                                }
-                              },
-                              // Disable editing if already agreed
-                              enabled: !p.agreed,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          if (!p.agreed) // Only show agree button if not agreed
-                            ElevatedButton(
-                              onPressed: () {
-                                controller.agreePayout(p.id);
-                              },
-                              child: const Text('Concordar'),
-                            ),
-                        ],
+                    leading: CircleAvatar(
+                      child: Text(
+                        p.position.replaceAll('º', ''),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
+                    ),
+                    title: Text('Posição: ${p.position}'),
+                    subtitle: Text(player != null ? 'Jogador: ${player.name}' : 'Aguardando definição...'),
+                    trailing: Text(
+                      'R\$ ${p.amount}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                   ),
                 );
