@@ -15,25 +15,21 @@ class TablePage extends StatefulWidget {
 }
 
 class _TablePageState extends State<TablePage> {
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final controller = Provider.of<TournamentController>(
-      context,
-      listen: false,
-    );
-    // Use a post-frame callback to show the dialog after the build is complete.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (controller.pendingPlayerMoves.isNotEmpty) {
-        _showTableBalancingDialog(context, controller.pendingPlayerMoves);
-        controller.pendingPlayerMoves.clear();
-      }
-    });
-  }
+  bool _isDialogShowing = false;
 
   @override
   Widget build(BuildContext context) {
     final controller = Provider.of<TournamentController>(context);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (controller.pendingPlayerMoves.isNotEmpty && !_isDialogShowing) {
+        _isDialogShowing = true;
+        await _showTableBalancingDialog(context, controller.pendingPlayerMoves);
+        controller.pendingPlayerMoves.clear();
+        _isDialogShowing = false;
+      }
+    });
+
     final seatedPlayers = controller.players.where((p) => p.seated).toList();
     final numTables = seatedPlayers.isEmpty
         ? 1
@@ -42,28 +38,39 @@ class _TablePageState extends State<TablePage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         // Make tables scrollable horizontally if they don't fit
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(numTables, (index) {
-              final tableNumber = index + 1;
-              final playersForTable = seatedPlayers
-                  .where((p) => p.tableNumber == tableNumber)
-                  .toList();
-              return PokerTableWidget(
-                tableNumber: tableNumber,
-                players: playersForTable,
-                controller: controller,
-              );
-            }),
-          ),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: List.generate(numTables, (index) {
+                    final tableNumber = index + 1;
+                    final playersForTable = seatedPlayers
+                        .where((p) => p.tableNumber == tableNumber)
+                        .toList();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: PokerTableWidget(
+                        tableNumber: tableNumber,
+                        players: playersForTable,
+                        controller: controller,
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );
   }
 
-  void _showTableBalancingDialog(BuildContext context, List<PlayerMove> moves) {
-    showDialog(
+  Future<void> _showTableBalancingDialog(
+      BuildContext context, List<PlayerMove> moves) {
+    return showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(

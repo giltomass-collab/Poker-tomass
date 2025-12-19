@@ -35,13 +35,20 @@ class TournamentController extends ChangeNotifier {
   // Table Balancing
   List<PlayerMove> pendingPlayerMoves = [];
   bool _storageAvailable = false;
+  int? testSeed; // optional seed for deterministic test randomization
 
-  TournamentController({bool initStorage = true}) {
+  TournamentController({bool initStorage = true, int? testSeed})
+    : testSeed = testSeed {
     _loadDefaultLevels();
     _setLevel(0);
     // initialize storage and load players (skip in tests if requested)
     if (initStorage) {
-      _initStorage();
+      _initStorage().then((_) {
+        // Calculate payouts after initial data is loaded
+        calculatePayouts();
+      });
+    } else {
+      calculatePayouts(); // For tests without storage init
     }
   }
 
@@ -74,6 +81,7 @@ class TournamentController extends ChangeNotifier {
   void addTransaction(PlayerTransaction tx) {
     transactions.add(tx);
     if (_storageAvailable) StorageService.saveTransaction(tx.id, tx.toMap());
+    calculatePayouts(); // Recalculate payouts on transaction change
     notifyListeners();
   }
 
@@ -154,6 +162,8 @@ class TournamentController extends ChangeNotifier {
     notifyListeners();
   }
 
+  int get currentLevelIndex => _currentLevelIndex;
+
   void toggleRunning() {
     if (isRunning) {
       _pause();
@@ -211,12 +221,14 @@ class TournamentController extends ChangeNotifier {
   void addPlayer(Player p) {
     players.add(p);
     if (_storageAvailable) StorageService.savePlayer(p);
+    calculatePayouts(); // Recalculate payouts on player added
     notifyListeners();
   }
 
   void removePlayer(String id) {
     players.removeWhere((p) => p.id == id);
     if (_storageAvailable) StorageService.deletePlayer(id);
+    calculatePayouts(); // Recalculate payouts on player removed
     notifyListeners();
   }
 
@@ -224,51 +236,62 @@ class TournamentController extends ChangeNotifier {
     final p = players.firstWhere((x) => x.id == id);
 
     if (seat == 0) {
-      // Auto-seat: determine target table and pick seat within that table
+      // Auto-seat: assign to least-full table
       final seatedPlayers = players.where((p) => p.seated).toList();
-      final playersOnTable1 = seatedPlayers
-          .where((p) => p.tableNumber == 1)
-          .length;
-      final currentNumTables = seatedPlayers
-          .map((p) => p.tableNumber)
-          .toSet()
-          .where((n) => n > 0)
-          .length;
 
-      int targetTable = 1;
-      // If table 1 is full, create/assign to next table
-      if (playersOnTable1 >= 9) {
-        targetTable = max(1, currentNumTables) + 1;
+      // Calculate required tables: each table holds max 9, so distribute evenly
+      final totalSeatedAfterAdding = seatedPlayers.length + 1;
+      final requiredNumTables = (totalSeatedAfterAdding / 9).ceil();
+
+      // Compute target size per table
+      final playersPerTable = totalSeatedAfterAdding ~/ requiredNumTables;
+      final remainder = totalSeatedAfterAdding % requiredNumTables;
+
+      // Count current players per table
+      final tableCounts = <int, int>{};
+      for (var sp in seatedPlayers) {
+        if (sp.tableNumber > 0) {
+          tableCounts[sp.tableNumber] = (tableCounts[sp.tableNumber] ?? 0) + 1;
+        }
       }
 
-      // Find available seats on target table
-      final occupiedSeatsOnTarget = seatedPlayers
-          .where((p) => p.tableNumber == targetTable)
-          .map((p) => p.seat)
+      // Find the table with the most room (least full relative to target)
+      // Tables 1 to remainder get +1 extra seat
+      int targetTable = 1;
+      int maxRoom = -999;
+      for (int t = 1; t <= requiredNumTables; t++) {
+        final currentCount = tableCounts[t] ?? 0;
+        final targetSize = playersPerTable + (t <= remainder ? 1 : 0);
+        final room = targetSize - currentCount;
+
+        if (room > maxRoom) {
+          maxRoom = room;
+          targetTable = t;
+        }
+      }
+
+      // Find available seat on target table
+      final occupiedSeatsOnTable = seatedPlayers
+          .where((sp) => sp.tableNumber == targetTable)
+          .map((sp) => sp.seat)
           .toSet();
-      final availableSeatsOnTarget = List.generate(
+
+      final availableSeats = List.generate(
         9,
         (i) => i + 1,
-      ).where((s) => !occupiedSeatsOnTarget.contains(s)).toList();
-      if (availableSeatsOnTarget.isEmpty) {
-        // Fallback: try any available seat globally
-        final occupiedSeats = seatedPlayers.map((p) => p.seat).toSet();
-        final availableSeats = List.generate(
-          9,
-          (i) => i + 1,
-        ).where((s) => !occupiedSeats.contains(s)).toList();
-        if (availableSeats.isEmpty) return; // No seats available anywhere
-        availableSeats.shuffle();
-        p.seat = availableSeats.first;
-        p.tableNumber = 1;
-      } else {
-        availableSeatsOnTarget.shuffle();
-        p.seat = availableSeatsOnTarget.first;
-        p.tableNumber = targetTable;
+      ).where((s) => !occupiedSeatsOnTable.contains(s)).toList();
+
+      if (availableSeats.isEmpty) {
+        if (kDebugMode) print('No available seats on table $targetTable');
+        return;
       }
+
+      availableSeats.shuffle(Random(testSeed));
+      p.tableNumber = targetTable;
+      p.seat = availableSeats.first;
     } else {
+      // Manual seat assignment
       p.seat = seat;
-      // default to table 1 when manually specifying a seat
       if (p.tableNumber == 0) p.tableNumber = 1;
     }
 
@@ -281,7 +304,7 @@ class TournamentController extends ChangeNotifier {
 
     if (_storageAvailable) StorageService.savePlayer(p);
 
-    // Check if tables need balancing after seating a player
+    // After seating, check if we need to rebalance
     balanceTables();
     notifyListeners();
   }
@@ -305,6 +328,8 @@ class TournamentController extends ChangeNotifier {
     if (_storageAvailable) StorageService.savePlayer(p);
     // Rebalance tables after player leaves to consolidate remaining players
     balanceTables();
+    calculatePayouts(); // Recalculate payouts on player unseated
+    notifyListeners();
   }
 
   // Reset blind levels to default
@@ -350,124 +375,119 @@ class TournamentController extends ChangeNotifier {
   void balanceTables() {
     pendingPlayerMoves.clear();
     final seatedPlayers = players.where((p) => p.seated).toList();
-    if (seatedPlayers.isEmpty) return;
-
-    final numPlayers = seatedPlayers.length;
-    final currentNumTables = seatedPlayers
-        .map((p) => p.tableNumber)
-        .toSet()
-        .where((n) => n > 0)
-        .length;
-    final requiredNumTables = (numPlayers / 9).ceil();
-
-    // If nothing to change, return
-    if (requiredNumTables == currentNumTables) {
-      // Still check for obvious overfull table
-      final overfull = seatedPlayers.any(
-        (p) =>
-            seatedPlayers.where((x) => x.tableNumber == p.tableNumber).length >
-            9,
-      );
-      if (!overfull) return;
+    if (seatedPlayers.isEmpty) {
+      notifyListeners();
+      return;
     }
 
-    // Compute expected sizes per table (balanced distribution)
-    final base = numPlayers ~/ requiredNumTables;
-    final remainder = numPlayers % requiredNumTables;
-    final expectedSizes = List<int>.generate(
-      requiredNumTables,
-      (i) => base + (i < remainder ? 1 : 0),
-    );
+    // Determine the ideal distribution of players
+    final numTables =
+        seatedPlayers.map((p) => p.tableNumber).toSet().where((n) => n > 0).length;
+    if (numTables == 0) return;
 
-    // Group players per table
-    final tablePlayers = <int, List<Player>>{};
-    for (var p in seatedPlayers) {
-      tablePlayers.putIfAbsent(p.tableNumber, () => []).add(p);
+    final requiredNumTables = (seatedPlayers.length / 9).ceil();
+    final playersPerTable = seatedPlayers.length ~/ requiredNumTables;
+    final remainder = seatedPlayers.length % requiredNumTables;
+
+    // A map to hold the target size for each table
+    final targetCounts = <int, int>{};
+    for (int i = 0; i < requiredNumTables; i++) {
+      final tableNum = i + 1;
+      targetCounts[tableNum] = playersPerTable + (i < remainder ? 1 : 0);
     }
 
-    // Track original positions
-    final originalPositions = {
-      for (var p in seatedPlayers)
-        p.id: {'table': p.tableNumber, 'seat': p.seat},
-    };
+    // A map of current player counts for each table
+    final currentCounts = <int, int>{};
+    final tables = seatedPlayers.map((p) => p.tableNumber).toSet();
+    for (final tableNum in tables) {
+      if (tableNum > 0) {
+        currentCounts[tableNum] =
+            seatedPlayers.where((p) => p.tableNumber == tableNum).length;
+      }
+    }
 
-    // Build list of players to move: from tables with surplus choose random players to move
-    final rng = Random();
+    // If a table no longer exists after a player is eliminated, fill it up
+    for(int i = 1; i <= numTables; i++) {
+      if(!currentCounts.keys.contains(i)) {
+        currentCounts[i] = 0;
+      }
+    }
+
+
+    // Identify over-full and under-full tables
+    final overFullTables = <int, int>{};
+    final underFullTables = <int, int>{};
+
+    for (final tableNum in currentCounts.keys) {
+      final current = currentCounts[tableNum] ?? 0;
+      final target = targetCounts[tableNum] ?? (requiredNumTables < tableNum ? 0 : playersPerTable);
+      if (current > target) {
+        overFullTables[tableNum] = current - target;
+      } else if (current < target) {
+        underFullTables[tableNum] = target - current;
+      }
+    }
+    
+    // If we need to close a table
+    if(numTables > requiredNumTables) {
+      final tableToClose = tables.last;
+      overFullTables[tableToClose] = currentCounts[tableToClose] ?? 0;
+    }
+
+
+    if (overFullTables.isEmpty) {
+      notifyListeners();
+      return; // Already balanced
+    }
+
+    // Get players to move from over-full tables
     final playersToMove = <Player>[];
-    final deficits = <int, int>{}; // table -> how many needed
+    overFullTables.forEach((tableNum, count) {
+      playersToMove.addAll(
+        seatedPlayers.where((p) => p.tableNumber == tableNum).take(count),
+      );
+    });
 
-    // Determine deficits for each table (including new tables)
-    for (int table = 1; table <= requiredNumTables; table++) {
-      final currentCount = tablePlayers[table]?.length ?? 0;
-      final expected = expectedSizes[table - 1];
-      if (currentCount < expected) {
-        deficits[table] = expected - currentCount;
+    // Get available seats in under-full tables
+    final availableSeats = <Map<String, int>>[];
+    underFullTables.forEach((tableNum, count) {
+      final occupiedSeats = seatedPlayers
+          .where((p) => p.tableNumber == tableNum)
+          .map((p) => p.seat)
+          .toSet();
+      for (int i = 1; i <= 9; i++) {
+        if (!occupiedSeats.contains(i)) {
+          availableSeats.add({'table': tableNum, 'seat': i});
+        }
       }
-    }
+    });
 
-    // For surplus tables, pick random players to move out
-    for (var entry in tablePlayers.entries.toList()) {
-      final table = entry.key;
-      final list = List<Player>.from(entry.value);
-      final expected = (table >= 1 && table <= expectedSizes.length)
-          ? expectedSizes[table - 1]
-          : 0;
-      final surplus = list.length - expected;
-      if (surplus > 0) {
-        // Shuffle and take 'surplus' players to move
-        list.shuffle(rng);
-        final toMove = list.take(surplus).toList();
-        playersToMove.addAll(toMove);
-        // Remove moved players from tablePlayers so remaining players keep their seats
-        tablePlayers[table] = list.skip(surplus).toList();
-      }
-    }
+    // Move players and create PlayerMove objects
+    for (int i = 0; i < playersToMove.length; i++) {
+      if (i >= availableSeats.length) break;
 
-    // Assign moved players into deficit tables
-    final movedList = <Player>[];
-    for (var destEntry in deficits.entries) {
-      final destTable = destEntry.key;
-      var need = destEntry.value;
-      while (need > 0 && playersToMove.isNotEmpty) {
-        final pl = playersToMove.removeLast();
-        // determine available seats on dest table
-        final occupiedSeats = (tablePlayers[destTable] ?? [])
-            .map((p) => p.seat)
-            .toSet();
-        final assignedSeats = movedList
-            .where((p) => p.tableNumber == destTable)
-            .map((p) => p.seat)
-            .toSet();
-        final unavailable = occupiedSeats.union(assignedSeats);
-        int seat = 1;
-        while (unavailable.contains(seat)) seat++;
-        pl.tableNumber = destTable;
-        pl.seat = seat;
-        // add to dest roster
-        tablePlayers.putIfAbsent(destTable, () => []).add(pl);
-        movedList.add(pl);
-        need--;
-      }
-    }
+      final player = playersToMove[i];
+      final newSeat = availableSeats[i];
+      final fromTable = player.tableNumber;
+      final fromSeat = player.seat;
+      final toTable = newSeat['table']!;
+      final toSeat = newSeat['seat']!;
 
-    // Save moved players and prepare pendingPlayerMoves
-    for (var p in movedList) {
-      final orig = originalPositions[p.id];
-      final fromTable = orig?['table'] ?? 0;
-      final fromSeat = orig?['seat'] ?? 0;
+      player.tableNumber = toTable;
+      player.seat = toSeat;
+
       pendingPlayerMoves.add(
         PlayerMove(
-          player: p,
+          player: player,
           fromTable: fromTable,
           fromSeat: fromSeat,
-          toTable: p.tableNumber,
-          toSeat: p.seat,
+          toTable: toTable,
+          toSeat: toSeat,
         ),
       );
-      if (_storageAvailable) StorageService.savePlayer(p);
+      if (_storageAvailable) StorageService.savePlayer(player);
     }
-
-    if (pendingPlayerMoves.isNotEmpty) notifyListeners();
+    notifyListeners();
   }
 
   void togglePlayerPaidStatus(String playerId) {
@@ -541,6 +561,19 @@ class TournamentController extends ChangeNotifier {
     addTransaction(tx);
   }
 
+  void addonForAllEligiblePlayers() {
+    if (!isAddonAllowed) return;
+
+    final eligiblePlayers = players
+        .where((p) => p.seated && p.addons == 0)
+        .toList();
+
+    for (final player in eligiblePlayers) {
+      addon(player.id, addonAmount);
+    }
+    notifyListeners();
+  }
+
   // Métodos para atualizar valores do torneio
   void updateBuyInAmount(int amount) {
     buyInAmount = amount;
@@ -576,69 +609,6 @@ class TournamentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void agreedBubble(String playerId) {
-    final idx = payouts.indexWhere((p) => p.playerId == playerId);
-    if (idx >= 0) {
-      payouts[idx].agreed = true;
-      final tx = PlayerTransaction(
-        id: const Uuid().v4(),
-        playerId: playerId,
-        time: DateTime.now(),
-        type: 'payout',
-        amount: payouts[idx].amount,
-      );
-      addTransaction(tx);
-      notifyListeners();
-    }
-  }
-
-  void calculatePayouts() {
-    // compute total pool from transactions
-    var totalPool = 0;
-    for (final t in transactions) {
-      if (t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy')
-        totalPool += t.amount;
-    }
-    final rake = (totalPool * 0.2).toInt();
-    final prizePool = totalPool - rake;
-
-    final activePlayers = players.where((p) => p.seated).toList();
-    if (activePlayers.isEmpty) return;
-
-    List<double> payoutStructure() {
-      final pc = activePlayers.length;
-      if (pc <= 3) return [1.0];
-      if (pc <= 5) return [0.65, 0.35];
-      if (pc <= 7) return [0.50, 0.30, 0.20];
-      if (pc <= 10) return [0.45, 0.25, 0.15, 0.15];
-      if (pc == 9) return [0.50, 0.30, 0.20];
-      if (pc <= 15) return [0.40, 0.30, 0.20, 0.10];
-      if (pc <= 20) return [0.35, 0.25, 0.18, 0.12, 0.10];
-      if (pc > 20) return [0.30, 0.20, 0.15, 0.12, 0.10, 0.08, 0.05];
-      return [];
-    }
-
-    final structure = payoutStructure();
-    if (structure.isEmpty) return;
-
-    payouts.clear();
-    final playersToPay = activePlayers.take(structure.length).toList();
-    for (var i = 0; i < structure.length; i++) {
-      final p = playersToPay[i];
-      final amount = (prizePool * structure[i]).round();
-      final position = '${i + 1}º';
-      payouts.add(
-        Payout(
-          id: const Uuid().v4(),
-          playerId: p.id,
-          amount: amount,
-          position: position,
-        ),
-      );
-    }
-    notifyListeners();
-  }
-
   void deletePreset(String name) {
     presets.removeWhere((p) => p.name == name);
     if (_storageAvailable) StorageService.deletePreset(name);
@@ -650,8 +620,8 @@ class TournamentController extends ChangeNotifier {
     if (preset == null) return;
     levels = preset.levels;
     buyInAmount = preset.buyInAmount;
-    rebuyAmount = preset.rebuyAmount;
-    addonAmount = preset.addonAmount;
+    rebuyAmount = rebuyAmount;
+    addonAmount = addonAmount;
     if (_storageAvailable) {
       StorageService.saveValue('buyInAmount', buyInAmount);
       StorageService.saveValue('rebuyAmount', rebuyAmount);
@@ -673,27 +643,159 @@ class TournamentController extends ChangeNotifier {
     if (_storageAvailable) StorageService.savePlayer(p);
     // rebalance remaining players
     balanceTables();
+    calculatePayouts(); // Recalculate payouts on player eliminated
     notifyListeners();
+  }
+
+  void agreedBubble(String playerId) {
+    final idx = payouts.indexWhere((p) => p.playerId == playerId);
+    if (idx >= 0) {
+      payouts[idx] = Payout(
+        id: payouts[idx].id,
+        playerId: payouts[idx].playerId,
+        amount: payouts[idx].amount,
+        position: payouts[idx].position,
+        agreed: true,
+      );
+      final tx = PlayerTransaction(
+        id: const Uuid().v4(),
+        playerId: playerId,
+        time: DateTime.now(),
+        type: 'payout',
+        amount: payouts[idx].amount,
+      );
+      addTransaction(tx);
+      notifyListeners();
+    }
+  }
+
+  List<double> _getPayoutStructure(int playerCount) {
+    if (playerCount <= 3) return [1.0]; // Winner takes all
+    if (playerCount <= 5) return [0.65, 0.35]; // 2 places
+    if (playerCount <= 7) return [0.50, 0.30, 0.20]; // 3 places
+    if (playerCount <= 10) return [0.45, 0.25, 0.15, 0.15]; // 4 places
+    // Example structures, can be expanded
+    // Based on PokerStars 9-man SNG
+    if (playerCount == 9) return [0.50, 0.30, 0.20];
+
+    // A more generic approach for larger fields
+    if (playerCount <= 15) {
+      // 4 places
+      return [0.40, 0.30, 0.20, 0.10];
+    }
+    if (playerCount <= 20) {
+      // 5 places
+      return [0.35, 0.25, 0.18, 0.12, 0.10];
+    }
+
+    // Default for very large fields (e.g., top 10%)
+    // This is a simplification. Real structures are more complex.
+    if (playerCount > 20) {
+      return [0.30, 0.20, 0.15, 0.12, 0.10, 0.08, 0.05]; // 7 places
+    }
+
+    return []; // No structure defined
+  }
+
+  void calculatePayouts() {
+    // compute total pool from transactions
+    var totalPool = 0;
+    for (final t in transactions) {
+      if (t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy') {
+        totalPool += t.amount;
+      }
+    }
+    final prizePool = totalPool;
+
+    final activePlayers = players.where((p) => p.seated).toList();
+    // Sort players by chips, then by total spent (more spent = higher rank in ties)
+    activePlayers.sort((a, b) {
+      if (a.chips != b.chips) return b.chips.compareTo(a.chips);
+      return b.totalSpent.compareTo(a.totalSpent);
+    });
+
+    if (activePlayers.isEmpty) {
+      payouts.clear();
+      notifyListeners();
+      return;
+    }
+
+    final structure = _getPayoutStructure(activePlayers.length);
+    if (structure.isEmpty) {
+      payouts.clear();
+      notifyListeners();
+      return;
+    }
+
+    final newPayouts = <Payout>[];
+    final playersToPay = activePlayers.take(structure.length).toList();
+
+    for (var i = 0; i < structure.length; i++) {
+      final p = playersToPay[i];
+      final amount = (prizePool * structure[i]).round();
+      final position = '${i + 1}º';
+
+      // Check if a payout for this player already exists and is agreed upon,
+      // or if it was manually edited. Preserve these if possible.
+      final existingPayout = payouts.firstWhereOrNull(
+        (e) => e.playerId == p.id && e.position == position,
+      );
+
+      newPayouts.add(
+        Payout(
+          id: existingPayout?.id ?? const Uuid().v4(),
+          playerId: p.id,
+          amount: existingPayout?.amount ?? amount, // Preserve manually edited amount or calculated
+          position: position,
+          agreed: existingPayout?.agreed ?? false,
+        ),
+      );
+    }
+    payouts = newPayouts;
+    notifyListeners();
+  }
+
+  void updatePayoutAmount(String payoutId, int newAmount) {
+    final index = payouts.indexWhere((p) => p.id == payoutId);
+    if (index != -1) {
+      payouts[index] = Payout(
+        id: payouts[index].id,
+        playerId: payouts[index].playerId,
+        amount: newAmount,
+        position: payouts[index].position,
+        agreed: payouts[index].agreed,
+      );
+      notifyListeners();
+    }
+  }
+
+  bool get isBubblePhase {
+    final activePlayersCount = players.where((p) => p.seated).length;
+    final payoutSpots = _getPayoutStructure(activePlayersCount).length;
+    // Bubble phase if (payoutSpots + 1) players remain
+    return activePlayersCount > payoutSpots && activePlayersCount <= payoutSpots + 1;
   }
 
   // Backwards-compatible methods used by UI
-  void addPayout(Payout p) {
-    payouts.add(p);
-    notifyListeners();
-  }
+  // void addPayout(Payout p) {
+  //   payouts.add(p);
+  //   notifyListeners();
+  // }
 
   void agreePayout(String payoutId) {
-    final p = payouts.firstWhere((x) => x.id == payoutId);
-    p.agreed = true;
-    final tx = PlayerTransaction(
-      id: const Uuid().v4(),
-      playerId: p.playerId,
-      time: DateTime.now(),
-      type: 'payout',
-      amount: p.amount,
-    );
-    addTransaction(tx);
-    notifyListeners();
+    final index = payouts.indexWhere((p) => p.id == payoutId);
+    if (index != -1) {
+      payouts[index] = Payout(
+        id: payouts[index].id,
+        playerId: payouts[index].playerId,
+        amount: payouts[index].amount,
+        position: payouts[index].position,
+        agreed: true,
+      );
+      // No longer adding transaction here to avoid duplicates.
+      // Transactions are handled when payouts are initially agreed through 'agreedBubble'
+      notifyListeners();
+    }
   }
 
   // Undo last transaction
@@ -776,6 +878,7 @@ class TournamentController extends ChangeNotifier {
     }
 
     balanceTables();
+    calculatePayouts(); // Recalculate payouts after restart
     notifyListeners();
   }
 }

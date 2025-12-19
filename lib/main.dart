@@ -8,7 +8,9 @@ import 'pages/bubble_agreement_page.dart';
 import 'pages/payouts_page.dart';
 import 'pages/ranking_page.dart';
 import 'pages/settings_page.dart';
-import 'widgets/central_timer_clock.dart';
+import 'widgets/timer_clock_widget.dart';
+import 'widgets/tournament_info_widget.dart';
+import 'widgets/tournament_stats_widget.dart';
 
 void main() {
   runApp(const TomassPokerApp());
@@ -149,8 +151,20 @@ class _MainShellState extends State<MainShell> {
             ),
             body: Column(
               children: [
-                // Central clock shown at top center across pages
-                CentralTimerClock(controller: controller),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TimerClockWidget(controller: controller),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: TournamentInfoWidget(controller: controller),
+                    ),
+                  ],
+                ),
+                TournamentStatsWidget(controller: controller),
                 Expanded(child: pages[_selectedIndex]),
               ],
             ),

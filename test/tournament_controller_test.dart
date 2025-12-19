@@ -4,7 +4,7 @@ import 'package:tomasspoker/models/player.dart';
 
 void main() {
   test('10th player creates table 2 and redistributes players', () {
-    final controller = TournamentController(initStorage: false);
+    final controller = TournamentController(initStorage: false, testSeed: 42);
 
     // Create 10 players
     for (int i = 0; i < 10; i++) {
