@@ -88,7 +88,7 @@ class _PlayersPageState extends State<PlayersPage> {
     final name = _nameCtrl.text.trim();
 
     // Verificar se o jogador já existe
-    if (controller.players.any((p) => p.name.toLowerCase() == name.toLowerCase())) {
+    if (controller.players.any((Player p) => p.name.toLowerCase() == name.toLowerCase())) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Jogador "$name" já existe.')),
       );

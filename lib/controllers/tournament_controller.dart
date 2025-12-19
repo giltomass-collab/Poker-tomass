@@ -1,16 +1,22 @@
+
 import 'dart:async';
 import 'dart:math';
 
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
+import 'package:tomasspoker/models/financial_summary.dart';
+import 'package:tomasspoker/models/player_move.dart';
+import 'package:tomasspoker/models/player_transaction.dart';
+import 'package:tomasspoker/models/payout.dart';
+import 'package:tomasspoker/models/tournament_preset.dart';
+import 'package:tomasspoker/services/storage_service.dart';
 import 'package:uuid/uuid.dart';
+
 import '../models/blind_level.dart';
+import '../models/payment_status.dart';
 import '../models/player.dart';
-import '../services/storage_service.dart';
-import '../models/player_transaction.dart';
-import '../models/player_move.dart';
-import '../models/payout.dart';
-import '../models/tournament_preset.dart';
+
+const String generalExpensesPlayerId = 'general_expenses';
 
 class TournamentController extends ChangeNotifier {
   List<Player> players = [];
@@ -95,6 +101,62 @@ class TournamentController extends ChangeNotifier {
     if (_storageAvailable) StorageService.saveTransaction(tx.id, tx.toMap());
     calculatePayouts(); // Recalculate payouts on transaction change
     notifyListeners();
+  }
+
+  void addExpense(String description, int amount) {
+    final tx = PlayerTransaction(
+      id: const Uuid().v4(),
+      playerId: generalExpensesPlayerId,
+      time: DateTime.now(),
+      type: 'expense',
+      amount: amount,
+    );
+    addTransaction(tx);
+  }
+
+  FinancialSummary getFinancialSummary() {
+    var totalBuyin = 0;
+    var totalExpenses = 0;
+
+    for (final t in transactions) {
+      if (t.type == 'buyin' ||
+          t.type == 'addon' ||
+          t.type == 'rebuy' ||
+          t.type == 'double_rebuy') {
+        totalBuyin += t.amount;
+      } else if (t.type == 'expense' || t.type == 'fee') {
+        totalExpenses += t.amount;
+      }
+    }
+
+    final prizePool = totalBuyin - totalExpenses;
+
+    final playerBalances = players.map((player) {
+      final payoutTx = transactions.where(
+        (t) => t.playerId == player.id && t.type == 'payout',
+      );
+      final payout = payoutTx.fold<int>(0, (sum, t) => sum + t.amount);
+      final netBalance = payout - player.totalSpent;
+
+      return PlayerBalance(
+        playerId: player.id,
+        playerName: player.name,
+        buyins: player.buyins,
+        rebuys: player.rebuys,
+        addons: player.addons,
+        totalSpent: player.totalSpent,
+        payout: payout,
+        netBalance: netBalance,
+        paymentStatus: player.paymentStatus,
+      );
+    }).toList();
+
+    return FinancialSummary(
+      totalBuyin: totalBuyin,
+      totalExpenses: totalExpenses,
+      prizePool: prizePool,
+      playerBalances: playerBalances,
+    );
   }
 
   List<PlayerTransaction> transactionsFor(String playerId) =>
@@ -494,9 +556,9 @@ class TournamentController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void togglePlayerPaidStatus(String playerId) {
+  void updatePlayerPaymentStatus(String playerId, PaymentStatus status) {
     final p = players.firstWhere((x) => x.id == playerId);
-    p.paid = !p.paid;
+    p.paymentStatus = status;
     if (_storageAvailable) StorageService.savePlayer(p);
     notifyListeners();
   }
@@ -731,15 +793,18 @@ class TournamentController extends ChangeNotifier {
   void calculatePayouts() {
     // compute total pool from transactions
     var totalPool = 0;
+    var totalExpenses = 0;
     for (final t in transactions) {
       if (t.type == 'buyin' ||
           t.type == 'addon' ||
           t.type == 'rebuy' ||
           t.type == 'double_rebuy') {
         totalPool += t.amount;
+      } else if (t.type == 'expense' || t.type == 'fee') {
+        totalExpenses += t.amount;
       }
     }
-    final prizePool = totalPool;
+    final prizePool = totalPool - totalExpenses;
 
     final activePlayers = players.where((p) => p.seated).toList();
     // Sort players by chips, then by total spent (more spent = higher rank in ties)
@@ -840,12 +905,22 @@ class TournamentController extends ChangeNotifier {
     }
 
     final lastTx = transactions.last;
+
+    if (lastTx.playerId == generalExpensesPlayerId) {
+      if (_storageAvailable) StorageService.deleteTransaction(lastTx.id);
+      transactions.removeLast();
+      calculatePayouts();
+      notifyListeners();
+      return 'Despesa desfeita.';
+    }
+
     final playerIndex = players.indexWhere((p) => p.id == lastTx.playerId);
 
     if (playerIndex == -1) {
       // Player not found, just remove transaction
       if (_storageAvailable) StorageService.deleteTransaction(lastTx.id);
       transactions.removeLast();
+      calculatePayouts();
       notifyListeners();
       return 'Transação órfã removida.';
     }
@@ -880,11 +955,16 @@ class TournamentController extends ChangeNotifier {
           payout.agreed = false;
         }
         break;
+      case 'expense':
+      case 'fee':
+        // No specific player stats to revert, just the total spent.
+        break;
     }
 
     if (_storageAvailable) StorageService.savePlayer(p);
     if (_storageAvailable) StorageService.deleteTransaction(lastTx.id);
     transactions.removeLast();
+    calculatePayouts();
     notifyListeners();
 
     return 'Ação "${lastTx.type.toUpperCase()}" de ${p.name} desfeita.';

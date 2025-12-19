@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/tournament_controller.dart';
 import '../models/player.dart'; // Import Player model for orElse
+import '../models/player_transaction.dart';
 
 class BubbleAgreementPage extends StatelessWidget {
   const BubbleAgreementPage({super.key});

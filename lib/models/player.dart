@@ -1,3 +1,5 @@
+import 'package:tomasspoker/models/payment_status.dart';
+
 class Player {
   final String id;
   String name;
@@ -9,7 +11,7 @@ class Player {
   int rebuys; // número de rebuys
   int addons; // número de add-ons
   int totalSpent; // total gasto (buy-in + rebuys + add-ons)
-  bool paid; // se já pagou a conta
+  PaymentStatus paymentStatus; // se já pagou a conta
   int? finishingRank; // null se ainda não foi eliminado
 
   Player({
@@ -23,7 +25,7 @@ class Player {
     this.rebuys = 0,
     this.addons = 0,
     this.totalSpent = 0,
-    this.paid = false,
+    this.paymentStatus = PaymentStatus.none,
     this.finishingRank,
   });
 
@@ -36,7 +38,7 @@ class Player {
     rebuys = 0;
     addons = 0;
     totalSpent = 0;
-    paid = false;
+    paymentStatus = PaymentStatus.none;
     finishingRank = null;
   }
 
@@ -51,7 +53,7 @@ class Player {
         'rebuys': rebuys,
         'addons': addons,
         'totalSpent': totalSpent,
-        'paid': paid,
+        'paymentStatus': paymentStatus.name,
         'finishingRank': finishingRank,
       };
 
@@ -66,7 +68,8 @@ class Player {
         rebuys: (m['rebuys'] ?? 0) as int,
         addons: (m['addons'] ?? 0) as int,
         totalSpent: (m['totalSpent'] ?? 0) as int,
-        paid: (m['paid'] ?? false) as bool,
+        paymentStatus: PaymentStatus.values
+            .firstWhere((e) => e.name == m['paymentStatus'], orElse: () => PaymentStatus.none),
         finishingRank: m['finishingRank'] as int?,
       );
 }

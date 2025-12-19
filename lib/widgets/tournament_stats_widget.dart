@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:collection/collection.dart';
 import '../controllers/tournament_controller.dart';
 import '../models/player.dart';
+import '../models/player_transaction.dart';
+import '../models/payout.dart';
 
 class TournamentStatsWidget extends StatefulWidget {
   final TournamentController controller;

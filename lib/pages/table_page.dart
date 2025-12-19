@@ -30,10 +30,10 @@ class _TablePageState extends State<TablePage> {
       }
     });
 
-    final seatedPlayers = controller.players.where((p) => p.seated).toList();
-    final numTables = seatedPlayers.isEmpty
-        ? 1
-        : (seatedPlayers.length / 9).ceil();
+    final seatedPlayers =
+        controller.players.where((Player p) => p.seated).toList();
+    final numTables =
+        seatedPlayers.isEmpty ? 1 : (seatedPlayers.length / 9).ceil();
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -48,7 +48,7 @@ class _TablePageState extends State<TablePage> {
                   children: List.generate(numTables, (index) {
                     final tableNumber = index + 1;
                     final playersForTable = seatedPlayers
-                        .where((p) => p.tableNumber == tableNumber)
+                        .where((Player p) => p.tableNumber == tableNumber)
                         .toList();
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../controllers/tournament_controller.dart';
+import '../models/player_transaction.dart';
 import 'bubble_agreement_page.dart'; // Import the BubbleAgreementPage
 
 class PayoutsPage extends StatelessWidget {
@@ -10,7 +11,8 @@ class PayoutsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = Provider.of<TournamentController>(context);
     final totalPool = controller.transactions
-        .where((t) => t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy')
+        .where(
+            (t) => t.type == 'buyin' || t.type == 'addon' || t.type == 'rebuy')
         .fold<int>(0, (sum, tx) => sum + tx.amount);
     final prizePool = totalPool;
     final payouts = controller.payouts;
