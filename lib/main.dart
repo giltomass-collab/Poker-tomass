@@ -123,16 +123,23 @@ class _MainShellState extends State<MainShell> {
         Expanded(
           child: Scaffold(
             appBar: AppBar(
-              title: Text(_titles[_selectedIndex]),
-              toolbarHeight: 80,
+              title: Text(
+                _titles[_selectedIndex],
+                style: const TextStyle(fontSize: 18),
+              ),
+              toolbarHeight: 48,
               actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh),
+                  iconSize: 20,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   tooltip: 'Reiniciar Torneio',
                   onPressed: () => _showRestartDialog(context, controller),
                 ),
                 IconButton(
                   icon: const Icon(Icons.undo),
+                  iconSize: 20,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   tooltip: 'Desfazer última ação',
                   onPressed: () {
                     final message = controller.undoLastTransaction();
@@ -151,20 +158,22 @@ class _MainShellState extends State<MainShell> {
             ),
             body: Column(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: TimerClockWidget(controller: controller),
-                    ),
-                    Expanded(
-                      flex: 3,
-                      child: TournamentInfoWidget(controller: controller),
-                    ),
-                  ],
-                ),
-                TournamentStatsWidget(controller: controller),
+                if (_selectedIndex == 1) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TimerClockWidget(controller: controller),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: TournamentInfoWidget(controller: controller),
+                      ),
+                    ],
+                  ),
+                  TournamentStatsWidget(controller: controller),
+                ],
                 Expanded(child: pages[_selectedIndex]),
               ],
             ),

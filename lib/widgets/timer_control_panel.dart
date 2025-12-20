@@ -62,7 +62,7 @@ class TimerControlPanel extends StatelessWidget {
             message: 'Próximo nível',
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.blue,
+                color: const Color.fromARGB(255, 0, 0, 0),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: IconButton(
@@ -78,7 +78,7 @@ class TimerControlPanel extends StatelessWidget {
             message: 'Nível anterior',
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.blue[300],
+                color: const Color.fromARGB(255, 0, 0, 0),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: IconButton(

@@ -13,11 +13,13 @@ class PlayersPage extends StatefulWidget {
 
 class _PlayersPageState extends State<PlayersPage> {
   final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _nameFocusNode = FocusNode();
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _phoneCtrl.dispose();
     _nameFocusNode.dispose();
     super.dispose();
   }
@@ -39,6 +41,15 @@ class _PlayersPageState extends State<PlayersPage> {
                   onSubmitted: (_) => _addPlayer(),
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _phoneCtrl,
+                  decoration: const InputDecoration(labelText: 'Celular'),
+                  keyboardType: TextInputType.phone,
+                  onSubmitted: (_) => _addPlayer(),
+                ),
+              ),
               ElevatedButton(
                 onPressed: _addPlayer,
                 child: const Text('Adicionar'),
@@ -55,8 +66,11 @@ class _PlayersPageState extends State<PlayersPage> {
                   leading: CircleAvatar(
                     child: Text(p.name.isNotEmpty ? p.name[0] : '?'),
                   ),
-                  title: Text(p.name, style: TextStyle(fontWeight: p.seated ? FontWeight.bold : FontWeight.normal)),
-                  subtitle: p.seated ? Text('Lugar: ${p.seat} - Chips: ${p.chips}') : const Text('Fora do torneio'),
+                  title: Text(p.name,
+                      style: TextStyle(
+                          fontWeight:
+                              p.seated ? FontWeight.bold : FontWeight.normal)),
+                  subtitle: Text(p.phoneNumber ?? 'Sem celular'),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -64,9 +78,11 @@ class _PlayersPageState extends State<PlayersPage> {
                         icon: const Icon(Icons.delete),
                         onPressed: () => controller.removePlayer(p.id),
                       ),
-                      Checkbox(value: p.seated, onChanged: (value) {
-                        controller.togglePlayerParticipation(p.id);
-                      }),
+                      Checkbox(
+                          value: p.seated,
+                          onChanged: (value) {
+                            controller.togglePlayerParticipation(p.id);
+                          }),
                     ],
                   ),
                 );
@@ -86,21 +102,28 @@ class _PlayersPageState extends State<PlayersPage> {
       listen: false,
     );
     final name = _nameCtrl.text.trim();
+    final phoneNumber = _phoneCtrl.text.trim();
 
     // Verificar se o jogador já existe
-    if (controller.players.any((Player p) => p.name.toLowerCase() == name.toLowerCase())) {
+    if (controller.players
+        .any((Player p) => p.name.toLowerCase() == name.toLowerCase())) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Jogador "$name" já existe.')),
       );
       return;
     }
 
-    final p = Player(id: Random().nextInt(1 << 31).toString(), name: name);
+    final p = Player(
+      id: Random().nextInt(1 << 31).toString(),
+      name: name,
+      phoneNumber: phoneNumber,
+    );
     controller.addPlayer(p);
     // Senta o jogador e balanceia as mesas
     controller.seatPlayer(p.id, 0); // seat 0 para auto-atribuição
 
     _nameCtrl.clear();
+    _phoneCtrl.clear();
     _nameFocusNode.requestFocus();
   }
 }

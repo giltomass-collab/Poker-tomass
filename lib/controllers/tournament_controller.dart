@@ -10,6 +10,7 @@ import 'package:tomasspoker/models/player_transaction.dart';
 import 'package:tomasspoker/models/payout.dart';
 import 'package:tomasspoker/models/tournament_preset.dart';
 import 'package:tomasspoker/services/storage_service.dart';
+import 'package:tomasspoker/services/messaging_service.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/blind_level.dart';
@@ -26,6 +27,9 @@ class TournamentController extends ChangeNotifier {
   Timer? _timer;
   int _remainingSeconds = 0;
   bool isRunning = false;
+
+  // Messaging
+  final MessagingService _messagingService = MessagingService();
 
   // Configurações de valores do torneio
   int buyInAmount = 1000;
@@ -577,6 +581,7 @@ class TournamentController extends ChangeNotifier {
       amount: amount,
     );
     addTransaction(tx);
+    _sendMessage(p, 'Compra', amount);
   }
 
   void rebuy(String playerId, int amount) {
@@ -593,6 +598,7 @@ class TournamentController extends ChangeNotifier {
       amount: amount,
     );
     addTransaction(tx);
+    _sendMessage(p, 'Recarga', amount);
   }
 
   void doubleRebuy(String playerId, int amount) {
@@ -609,6 +615,7 @@ class TournamentController extends ChangeNotifier {
       amount: amount * 2,
     );
     addTransaction(tx);
+    _sendMessage(p, 'Recarga Dupla', amount * 2);
   }
 
   void addon(String playerId, int amount) {
@@ -625,6 +632,7 @@ class TournamentController extends ChangeNotifier {
       amount: amount,
     );
     addTransaction(tx);
+    _sendMessage(p, 'Add-on', amount);
   }
 
   void addonForAllEligiblePlayers() {
@@ -993,5 +1001,12 @@ class TournamentController extends ChangeNotifier {
     balanceTables();
     calculatePayouts(); // Recalculate payouts after restart
     notifyListeners();
+  }
+
+  void _sendMessage(Player player, String action, int amount) {
+    if (player.phoneNumber != null && player.phoneNumber!.isNotEmpty) {
+      final message = 'TomasPoker: $action de R\$$amount confirmada.';
+      _messagingService.sendMessage(player.phoneNumber!, message);
+    }
   }
 }

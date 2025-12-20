@@ -33,162 +33,91 @@ class _TournamentInfoWidgetState extends State<TournamentInfoWidget> {
   Widget build(BuildContext context) {
     final level = controller.currentLevel;
     final isBreak = level.isBreak;
-    final screenHeight = MediaQuery.of(context).size.height;
-    final widgetHeight = screenHeight * 0.20; // occupy ~20% of screen height
 
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: widgetHeight),
-      child: SingleChildScrollView(
-        physics: const ClampingScrollPhysics(),
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            // Current Level
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  'Nível: ',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: isBreak
-                        ? Colors.red.shade700
-                        : Colors.grey.shade700,
-                  ),
-                ),
-                Text(
-                  '${level.level}',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: isBreak
-                        ? Colors.red.shade700
-                        : Colors.grey.shade700,
-                  ),
-                ),
-                if (isBreak) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8.0),
-                    child: Chip(
-                      label: const Text(
-                        'INTERVALO',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.white,
-                        ),
-                      ),
-                      backgroundColor: Colors.red.shade700,
-                      padding: EdgeInsets.zero,
-                    ),
+            // Current Blinds, Ante and Next Level Preview
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: _buildBlindsDisplayWidget(level),
                   ),
                   const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => controller.addonForAllEligiblePlayers(),
-                    icon: const Icon(Icons.add_circle_outline, size: 16),
-                    label: const Text('Add-on para Todos'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple,
-                      foregroundColor: Colors.white,
-                      textStyle: const TextStyle(fontSize: 12),
-                    ),
+                  const VerticalDivider(
+                      width: 1, thickness: 1, indent: 8, endIndent: 8),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 2,
+                    child: _buildNextLevelPreview(),
                   ),
-                ]
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
 
-            // Current Blinds, Ante
-            _buildBlindsDisplayWidget(level),
-            const SizedBox(height: 8),
-
-            // Next Level Preview
-            _buildNextLevelPreview(),
+            if (isBreak) ...[
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () => controller.addonForAllEligiblePlayers(),
+                icon: const Icon(Icons.add_circle_outline, size: 18),
+                label: const Text('Add-on para Todos'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
+              ),
+            ]
           ],
         ),
       ),
     );
   }
 
+  Widget _buildInfoBox(String label, String value, Color color) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBlindsDisplayWidget(BlindLevel level) {
     final ante = level.bigBlind; // Ante igual ao BB
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.blue.shade200),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'SB',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                  ),
-                  Text(
-                    '${level.smallBlind}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 20),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'BB',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                  ),
-                  Text(
-                    '${level.bigBlind}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 20),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ante',
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                  ),
-                  Text(
-                    '$ante',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildInfoBox('Small Blind', '${level.smallBlind}', Colors.blue),
+        _buildInfoBox('Big Blind', '${level.bigBlind}', Colors.red),
+        _buildInfoBox('Ante', '$ante', Colors.orange),
+      ],
     );
   }
 
@@ -199,7 +128,7 @@ class _TournamentInfoWidgetState extends State<TournamentInfoWidget> {
     if (currentIdx >= levels.length - 1) {
       return const Text(
         'Último nível',
-        style: TextStyle(fontSize: 10, color: Colors.grey),
+        style: TextStyle(fontStyle: FontStyle.italic),
       );
     }
 
@@ -207,26 +136,28 @@ class _TournamentInfoWidgetState extends State<TournamentInfoWidget> {
     final nextAnte = nextLevel.bigBlind;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.amber.shade200),
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Próxima Blind:',
-            style: TextStyle(fontSize: 9, color: Colors.grey),
-          ),
-          Text(
-            '${nextLevel.label}: SB ${nextLevel.smallBlind} / BB ${nextLevel.bigBlind} / A $nextAnte',
-            style: const TextStyle(
-              fontSize: 10,
+            'PRÓXIMO NÍVEL',
+            style: TextStyle(
+              fontSize: 12,
               fontWeight: FontWeight.bold,
-              color: Colors.orange,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const Divider(height: 10),
+          Text(
+            '${nextLevel.label}: ${nextLevel.smallBlind} / ${nextLevel.bigBlind} / $nextAnte',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],

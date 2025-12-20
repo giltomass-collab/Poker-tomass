@@ -12,11 +12,13 @@ class Player {
   int addons; // número de add-ons
   int totalSpent; // total gasto (buy-in + rebuys + add-ons)
   PaymentStatus paymentStatus; // se já pagou a conta
+  String? phoneNumber;
   int? finishingRank; // null se ainda não foi eliminado
 
   Player({
     required this.id,
     required this.name,
+    this.phoneNumber,
     this.chips = 0,
     this.seated = false,
     this.seat = 0,
@@ -40,11 +42,13 @@ class Player {
     totalSpent = 0;
     paymentStatus = PaymentStatus.none;
     finishingRank = null;
+    // phoneNumber is not reset, as it's part of the player's profile
   }
 
   Map<String, dynamic> toMap() => {
         'id': id,
         'name': name,
+        'phoneNumber': phoneNumber,
         'chips': chips,
         'seated': seated,
         'seat': seat,
@@ -60,6 +64,7 @@ class Player {
   factory Player.fromMap(Map<dynamic, dynamic> m) => Player(
         id: m['id'] as String,
         name: m['name'] as String,
+        phoneNumber: m['phoneNumber'] as String?,
         chips: (m['chips'] ?? 0) as int,
         seated: (m['seated'] ?? false) as bool,
         seat: (m['seat'] ?? 0) as int,

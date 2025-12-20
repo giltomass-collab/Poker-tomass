@@ -47,24 +47,25 @@ class _TimerClockWidgetState extends State<TimerClockWidget> {
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
       child: SizedBox(
         height: widgetHeight,
-        child: Center(
-          child: Card(
-            elevation: 6,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+        child: Card(
+          elevation: 6,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          color: isBreak ? Colors.red.shade50 : Colors.grey.shade50,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 6.0,
             ),
-            color: isBreak ? Colors.red.shade50 : Colors.grey.shade50,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12.0,
-                vertical: 6.0,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: circleSize,
-                    height: circleSize,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Timer Section
+                SizedBox(
+                  height: widgetHeight, // Set height of timer section
+                  child: AspectRatio(
+                    aspectRatio: 1.0,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
@@ -79,8 +80,8 @@ class _TimerClockWidgetState extends State<TimerClockWidget> {
                               isBreak
                                   ? Colors.red.shade700
                                   : (controller.isRunning
-                                      ? Colors.green
-                                      : Colors.blue),
+                                      ? const Color.fromARGB(255, 18, 7, 82)
+                                      : const Color.fromARGB(255, 3, 3, 74)),
                             ),
                           ),
                         ),
@@ -92,7 +93,7 @@ class _TimerClockWidgetState extends State<TimerClockWidget> {
                             color: isBreak
                                 ? Colors.red.shade900
                                 : (controller.isRunning
-                                    ? Colors.green.shade800
+                                    ? const Color.fromARGB(255, 17, 5, 84)
                                     : Colors.black87),
                             fontFamily: 'RobotoMono',
                           ),
@@ -100,78 +101,124 @@ class _TimerClockWidgetState extends State<TimerClockWidget> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  // Controls
-                  Flexible(
+                ),
+                const SizedBox(width: 16), // Spacer
+
+                // Blinds, Level Info, and Controls Section
+                Expanded(
+                  child: SizedBox(
+                    height: widgetHeight, // Set height of this combined section
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        // Control buttons row
+                      children: [
+                        // Controls and Current Level Text
                         Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            // Play/Pause
-                            Tooltip(
-                              message: controller.isRunning ? 'Pausar' : 'Iniciar',
-                              child: IconButton(
-                                onPressed: () => controller.toggleRunning(),
-                                icon: Icon(
-                                  controller.isRunning
-                                      ? Icons.pause_circle_filled
-                                      : Icons.play_circle_fill,
-                                  size: 28,
-                                  color: controller.isRunning
-                                      ? Colors.green
-                                      : Colors.blue,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // Control buttons
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                // Play/Pause
+                                Tooltip(
+                                  message: controller.isRunning
+                                      ? 'Pausar'
+                                      : 'Iniciar',
+                                  child: IconButton(
+                                    onPressed: () =>
+                                        controller.toggleRunning(),
+                                    icon: Icon(
+                                      controller.isRunning
+                                          ? Icons.pause_circle_filled
+                                          : Icons.play_circle_fill,
+                                      size: 24, // Smaller size
+                                      color: controller.isRunning
+                                          ? Colors.green
+                                          : Colors.blue,
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
                                 ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+                                const SizedBox(width: 4),
 
-                            // Previous Level
-                            Tooltip(
-                              message: 'Nível anterior',
-                              child: IconButton(
-                                onPressed: () => controller.previousLevel(),
-                                icon: const Icon(
-                                  Icons.skip_previous,
-                                  size: 24,
+                                // Previous Level
+                                Tooltip(
+                                  message: 'Nível anterior',
+                                  child: IconButton(
+                                    onPressed: () =>
+                                        controller.previousLevel(),
+                                    icon: const Icon(
+                                      Icons.skip_previous,
+                                      size: 20, // Smaller size
+                                    ),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
                                 ),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+                                const SizedBox(width: 4),
 
-                            // Next Level
-                            Tooltip(
-                              message: 'Próximo nível',
-                              child: IconButton(
-                                onPressed: () => controller.nextLevel(),
-                                icon: const Icon(Icons.skip_next, size: 24),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
+                                // Next Level
+                                Tooltip(
+                                  message: 'Próximo nível',
+                                  child: IconButton(
+                                    onPressed: () => controller.nextLevel(),
+                                    icon: const Icon(Icons.skip_next,
+                                        size: 20), // Smaller size
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
 
-                            // Reset current level
-                            Tooltip(
-                              message: 'Reiniciar tempo do nível',
-                              child: IconButton(
-                                onPressed: () => controller.resetCurrentLevel(),
-                                icon: const Icon(Icons.restart_alt, size: 22),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
+                                // Reset current level
+                                Tooltip(
+                                  message: 'Reiniciar tempo do nível',
+                                  child: IconButton(
+                                    onPressed: () =>
+                                        controller.resetCurrentLevel(),
+                                    icon: const Icon(Icons.restart_alt,
+                                        size: 18), // Smaller size
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // Current Level Text and Interval Chip
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Nível ${level.level}',
+                                  style: const TextStyle(
+                                    fontSize: 18, // Slightly smaller
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black, // Explicitly black
+                                  ),
+                                ),
+                                if (isBreak) ...[
+                                  const SizedBox(width: 8),
+                                  Chip(
+                                    label: const Text('INTERVALO'),
+                                    backgroundColor: Theme.of(context)
+                                        .colorScheme
+                                        .secondary,
+                                    labelStyle: TextStyle(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSecondary),
+                                    padding: EdgeInsets.zero, // Make chip smaller
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+
                         // Time slider for director control
                         Column(
                           mainAxisSize: MainAxisSize.min,
@@ -196,8 +243,8 @@ class _TimerClockWidgetState extends State<TimerClockWidget> {
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
